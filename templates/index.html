@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Produtos{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-box-seam"></i> Estoque de Produtos</h4>
+    <a href="{{ url_for('produto_novo') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Novo Produto
+    </a>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label form-label-sm mb-1">Buscar</label>
+                <input type="text" name="busca" class="form-control form-control-sm"
+                       placeholder="Descricao, codigo ou codigo de barras..."
+                       value="{{ busca }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label form-label-sm mb-1">Grupo</label>
+                <select name="grupo" class="form-select form-select-sm">
+                    <option value="">Todos os Grupos</option>
+                    {% for g in grupos %}
+                        <option value="{{ g.id }}" {{ 'selected' if filtro_grupo|string == g.id|string }}>
+                            {{ g.codigo }} - {{ g.nome }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-search"></i> Filtrar
+                </button>
+                <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-x-circle"></i> Limpar
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabela de Produtos -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Codigo</th>
+                    <th>Descricao</th>
+                    <th>Grupo</th>
+                    <th class="text-end">Estoque</th>
+                    <th>U.E.</th>
+                    <th class="text-end">Custo</th>
+                    <th class="text-end">Venda</th>
+                    <th>Fornecedor</th>
+                    <th>Curva</th>
+                    <th class="text-center">Acoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in produtos %}
+                <tr class="{{ 'table-warning' if p.posicao_estoque <= p.estoque_minimo and p.estoque_minimo > 0 }}">
+                    <td><strong>{{ p.codigo }}</strong></td>
+                    <td>
+                        <a href="{{ url_for('produto_detalhe', produto_id=p.id) }}">
+                            {{ p.descricao }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if p.grupo_nome %}
+                            <span class="badge bg-secondary">{{ p.grupo_codigo }} - {{ p.grupo_nome }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {{ "%.4f"|format(p.posicao_estoque or 0) }}
+                    </td>
+                    <td>{{ p.unidade_estoque }}</td>
+                    <td class="text-end">{{ "%.6f"|format(p.valor_custo or 0) }}</td>
+                    <td class="text-end">{{ "%.4f"|format(p.valor_venda or 0) }}</td>
+                    <td>{{ p.fornecedor_nome or '-' }}</td>
+                    <td>
+                        <span class="badge {{ 'bg-success' if p.curva_abc == 'A' else ('bg-info' if p.curva_abc == 'B' else 'bg-warning') }}">
+                            {{ p.curva_abc or '-' }}
+                        </span>
+                    </td>
+                    <td class="text-center">
+                        <div class="btn-group btn-group-sm">
+                            <a href="{{ url_for('produto_detalhe', produto_id=p.id) }}"
+                               class="btn btn-outline-info" title="Detalhes">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <a href="{{ url_for('produto_editar', produto_id=p.id) }}"
+                               class="btn btn-outline-primary" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('produto_excluir', produto_id=p.id) }}"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Deseja realmente excluir este produto?')">
+                                <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                        <p class="mb-0 mt-2">Nenhum produto cadastrado.</p>
+                        <a href="{{ url_for('produto_novo') }}" class="btn btn-sm btn-primary mt-2">
+                            Cadastrar Primeiro Produto
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if produtos %}
+    <div class="card-footer text-muted small">
+        {{ produtos|length }} produto(s) encontrado(s)
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

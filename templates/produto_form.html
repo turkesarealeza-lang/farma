@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if produto else 'Novo' }} Produto{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">
+        <i class="bi bi-{{ 'pencil' if produto else 'plus-circle' }}"></i>
+        {{ 'Editar' if produto else 'Novo' }} Produto
+    </h4>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<form method="POST" id="produtoForm">
+    <!-- Header: Grupo, Codigo, Posicao Estoque -->
+    <div class="card mb-3">
+        <div class="card-header bg-primary text-white py-2">
+            <i class="bi bi-info-circle"></i> Identificacao
+        </div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Grupo</label>
+                    <select name="grupo_id" class="form-select form-select-sm">
+                        <option value="">Selecione...</option>
+                        {% for g in grupos %}
+                            <option value="{{ g.id }}"
+                                {{ 'selected' if produto and produto.grupo_id == g.id }}>
+                                {{ g.codigo }} - {{ g.nome }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Produto (Codigo)</label>
+                    <input type="number" name="codigo" class="form-control form-control-sm"
+                           value="{{ produto.codigo if produto else proximo_codigo }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Posicao Estoque</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="posicao_estoque" class="form-control"
+                               value="{{ '%.4f'|format(produto.posicao_estoque) if produto and produto.posicao_estoque else '0.0000' }}">
+                        <span class="input-group-text" id="ue-display">U.E.</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label form-label-sm">Descricao *</label>
+                    <input type="text" name="descricao" class="form-control form-control-sm"
+                           value="{{ produto.descricao if produto else '' }}" required
+                           style="text-transform: uppercase;">
+                </div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Codigo de Barras</label>
+                    <input type="text" name="codigo_barras" class="form-control form-control-sm"
+                           value="{{ produto.codigo_barras if produto and produto.codigo_barras else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Unid. Manipulacao (U.M.)</label>
+                    <select name="unidade_manipulacao" class="form-select form-select-sm">
+                        {% for u in ['mg', 'g', 'kg', 'ml', 'L', 'mcg', 'UI', 'un'] %}
+                            <option value="{{ u }}" {{ 'selected' if produto and produto.unidade_manipulacao == u }}>{{ u }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Unid. Estoque (U.E.)</label>
+                    <select name="unidade_estoque" class="form-select form-select-sm">
+                        {% for u in ['g', 'kg', 'mg', 'ml', 'L', 'un', 'cx', 'fr'] %}
+                            <option value="{{ u }}" {{ 'selected' if produto and produto.unidade_estoque == u }}>{{ u }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs like the original system -->
+    <ul class="nav nav-tabs" id="produtoTabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-materia-prima" type="button">
+                Materia Prima
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-complemento" type="button">
+                Complemento
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ficha-tecnica" type="button">
+                Ficha Tecnica
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-tributacao" type="button">
+                Tributacao
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-observacao" type="button">
+                Observacao
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content border border-top-0 rounded-bottom p-3 mb-3">
+
+        <!-- Tab: Materia Prima -->
+        <div class="tab-pane fade show active" id="tab-materia-prima">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Valor Custo (U.E.)</label>
+                    <input type="text" name="valor_custo" class="form-control form-control-sm"
+                           value="{{ '%.6f'|format(produto.valor_custo) if produto and produto.valor_custo else '0.000000' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Custo Medio (U.E.)</label>
+                    <input type="text" name="custo_medio" class="form-control form-control-sm"
+                           value="{{ '%.5f'|format(produto.custo_medio) if produto and produto.custo_medio else '0.00000' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Custo Referencia (U.E.)</label>
+                    <input type="text" name="custo_referencia" class="form-control form-control-sm"
+                           value="{{ '%.6f'|format(produto.custo_referencia) if produto and produto.custo_referencia else '0.000000' }}">
+                </div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Markup (%)</label>
+                    <input type="text" name="markup" class="form-control form-control-sm"
+                           value="{{ '%.3f'|format(produto.markup) if produto and produto.markup else '0.000' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Valor Venda (U.E.)</label>
+                    <input type="text" name="valor_venda" class="form-control form-control-sm"
+                           value="{{ '%.4f'|format(produto.valor_venda) if produto and produto.valor_venda else '0.0000' }}">
+                </div>
+                <div class="col-md-2">
+                    <div class="form-check mt-4">
+                        <input type="checkbox" name="ocultar_venda" class="form-check-input"
+                               {{ 'checked' if produto and produto.ocultar_venda }}>
+                        <label class="form-check-label form-label-sm">Ocultar Venda</label>
+                    </div>
+                </div>
+            </div>
+            <hr class="my-2">
+            <div class="row g-2">
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Fator Correcao</label>
+                    <input type="text" name="fator_correcao" class="form-control form-control-sm"
+                           value="{{ produto.fator_correcao if produto and produto.fator_correcao else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Fator Equivalencia</label>
+                    <input type="text" name="fator_equivalencia" class="form-control form-control-sm"
+                           value="{{ produto.fator_equivalencia if produto and produto.fator_equivalencia else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Densidade (g/ml)</label>
+                    <input type="text" name="densidade" class="form-control form-control-sm"
+                           value="{{ produto.densidade if produto and produto.densidade else '1' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Diluicao</label>
+                    <input type="text" name="diluicao" class="form-control form-control-sm"
+                           value="{{ produto.diluicao if produto and produto.diluicao else '1' }}">
+                </div>
+            </div>
+            <hr class="my-2">
+            <div class="row g-2">
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Estoque Min. (U.E.)</label>
+                    <input type="text" name="estoque_minimo" class="form-control form-control-sm"
+                           value="{{ '%.4f'|format(produto.estoque_minimo) if produto and produto.estoque_minimo else '0.0000' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Estoque Max. (U.E.)</label>
+                    <input type="text" name="estoque_maximo" class="form-control form-control-sm"
+                           value="{{ '%.4f'|format(produto.estoque_maximo) if produto and produto.estoque_maximo else '' }}">
+                </div>
+            </div>
+            <hr class="my-2">
+            <div class="row g-2">
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Dose Maxima</label>
+                    <input type="text" name="dose_maxima" class="form-control form-control-sm"
+                           value="{{ produto.dose_maxima if produto and produto.dose_maxima else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">U.M.</label>
+                    <input type="text" name="dose_maxima_um" class="form-control form-control-sm"
+                           value="{{ produto.dose_maxima_um if produto and produto.dose_maxima_um else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Dose Max./Dia</label>
+                    <input type="text" name="dose_maxima_dia" class="form-control form-control-sm"
+                           value="{{ produto.dose_maxima_dia if produto and produto.dose_maxima_dia else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">U.M./Dia</label>
+                    <input type="text" name="dose_maxima_dia_um" class="form-control form-control-sm"
+                           value="{{ produto.dose_maxima_dia_um if produto and produto.dose_maxima_dia_um else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Concentracao</label>
+                    <input type="text" name="concentracao" class="form-control form-control-sm"
+                           value="{{ produto.concentracao if produto and produto.concentracao else '' }}">
+                </div>
+            </div>
+            <hr class="my-2">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label form-label-sm">Fornecedor</label>
+                    <select name="fornecedor_id" class="form-select form-select-sm">
+                        <option value="">Selecione...</option>
+                        {% for f in fornecedores %}
+                            <option value="{{ f.id }}"
+                                {{ 'selected' if produto and produto.fornecedor_id == f.id }}>
+                                {{ f.codigo }} - {{ f.nome }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Ult. Compra</label>
+                    <input type="date" name="ultima_compra" class="form-control form-control-sm"
+                           value="{{ produto.ultima_compra if produto and produto.ultima_compra else '' }}">
+                </div>
+            </div>
+            <hr class="my-2">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Calculo</label>
+                    <select name="tipo_calculo" class="form-select form-select-sm">
+                        {% for t in ['Percentual', 'Capsula', 'QSP', 'Sem calculo'] %}
+                            <option value="{{ t }}" {{ 'selected' if produto and produto.tipo_calculo == t }}>{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Margem Seguranca (%)</label>
+                    <input type="text" name="margem_seguranca" class="form-control form-control-sm"
+                           value="{{ produto.margem_seguranca if produto and produto.margem_seguranca else '' }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm">Curva ABC</label>
+                    <select name="curva_abc" class="form-select form-select-sm">
+                        {% for c in ['A', 'B', 'C'] %}
+                            <option value="{{ c }}" {{ 'selected' if produto and produto.curva_abc == c }}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">SBIT - RDC 67/07</label>
+                    <input type="text" name="sbit_rdc" class="form-control form-control-sm"
+                           value="{{ produto.sbit_rdc if produto and produto.sbit_rdc else '' }}">
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Complemento -->
+        <div class="tab-pane fade" id="tab-complemento">
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label form-label-sm">Descricao Rotulo</label>
+                    <input type="text" name="descricao_rotulo" class="form-control form-control-sm"
+                           value="{{ produto.descricao_rotulo if produto and produto.descricao_rotulo else '' }}"
+                           style="text-transform: uppercase;">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">CAS</label>
+                    <input type="text" name="cas" class="form-control form-control-sm"
+                           value="{{ produto.cas if produto and produto.cas else '' }}">
+                </div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">Lista Controlado</label>
+                    <input type="text" name="lista_controlado" class="form-control form-control-sm"
+                           value="{{ produto.lista_controlado if produto and produto.lista_controlado else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">DCB</label>
+                    <input type="text" name="dcb" class="form-control form-control-sm"
+                           value="{{ produto.dcb if produto and produto.dcb else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">DCI</label>
+                    <input type="text" name="dci" class="form-control form-control-sm"
+                           value="{{ produto.dci if produto and produto.dci else '' }}">
+                </div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-4">
+                    <label class="form-label form-label-sm">Classe Terapeutica</label>
+                    <input type="text" name="classe_terapeutica" class="form-control form-control-sm"
+                           value="{{ produto.classe_terapeutica if produto and produto.classe_terapeutica else '' }}">
+                </div>
+            </div>
+            <div class="row g-2 mt-2">
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="antimicrobiano" class="form-check-input"
+                               {{ 'checked' if produto and produto.antimicrobiano }}>
+                        <label class="form-check-label">Antimicrobiano</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="controle_especial" class="form-check-input"
+                               {{ 'checked' if produto and produto.controle_especial }}>
+                        <label class="form-check-label">Sujeito a Controle Especial</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="uso_continuo" class="form-check-input"
+                               {{ 'checked' if produto and produto.uso_continuo }}>
+                        <label class="form-check-label">Uso Continuo</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Ficha Tecnica (placeholder for future use) -->
+        <div class="tab-pane fade" id="tab-ficha-tecnica">
+            <p class="text-muted">Ficha tecnica e bula podem ser adicionadas futuramente.</p>
+        </div>
+
+        <!-- Tab: Tributacao -->
+        <div class="tab-pane fade" id="tab-tributacao">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">NBM/SH</label>
+                    <input type="text" name="nbm_sh" class="form-control form-control-sm"
+                           value="{{ produto.nbm_sh if produto and produto.nbm_sh else '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">NCM/SH</label>
+                    <input type="text" name="ncm_sh" class="form-control form-control-sm"
+                           value="{{ produto.ncm_sh if produto and produto.ncm_sh else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label form-label-sm">Fabricante</label>
+                    <input type="text" name="fabricante" class="form-control form-control-sm"
+                           value="{{ produto.fabricante if produto and produto.fabricante else '' }}">
+                </div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm">N. Licenca MAPA</label>
+                    <input type="text" name="num_licenca_mapa" class="form-control form-control-sm"
+                           value="{{ produto.num_licenca_mapa if produto and produto.num_licenca_mapa else '' }}">
+                </div>
+            </div>
+            <div class="row g-2 mt-2">
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="inativo_compras" class="form-check-input"
+                               {{ 'checked' if produto and produto.inativo_compras }}>
+                        <label class="form-check-label">Inativo Compras</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="produto_inativo" class="form-check-input"
+                               {{ 'checked' if produto and produto.produto_inativo }}>
+                        <label class="form-check-label">Produto Inativo</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Observacao -->
+        <div class="tab-pane fade" id="tab-observacao">
+            <div class="row">
+                <div class="col-12">
+                    <label class="form-label form-label-sm">Observacoes</label>
+                    <textarea name="observacao" class="form-control" rows="5">{{ produto.observacao if produto and produto.observacao else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="d-flex gap-2 mb-4">
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-circle"></i> {{ 'Atualizar' if produto else 'Cadastrar' }}
+        </button>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-x-circle"></i> Cancelar
+        </a>
+    </div>
+</form>
+{% endblock %}

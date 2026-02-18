@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}Produto {{ produto.codigo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">
+        <i class="bi bi-box-seam"></i>
+        {{ produto.descricao }}
+        <small class="text-muted">({{ produto.codigo }})</small>
+    </h4>
+    <div class="btn-group">
+        <a href="{{ url_for('produto_editar', produto_id=produto.id) }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-pencil"></i> Editar
+        </a>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<!-- Estoque Card -->
+<div class="row mb-3">
+    <div class="col-md-4">
+        <div class="card {{ 'border-warning' if produto.posicao_estoque <= produto.estoque_minimo and produto.estoque_minimo > 0 else 'border-success' }}">
+            <div class="card-body text-center">
+                <h6 class="text-muted">Posicao Estoque</h6>
+                <h2 class="mb-0" id="estoque-display">{{ "%.4f"|format(produto.posicao_estoque or 0) }}</h2>
+                <span class="text-muted">{{ produto.unidade_estoque }}</span>
+                <hr>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button class="btn btn-success btn-sm" onclick="movEstoque({{ produto.id }}, 'entrada')">
+                        <i class="bi bi-plus-circle"></i> Entrada
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="movEstoque({{ produto.id }}, 'saida')">
+                        <i class="bi bi-dash-circle"></i> Saida
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Custos</h6>
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td class="text-muted">Custo:</td><td class="text-end">{{ "%.6f"|format(produto.valor_custo or 0) }} / {{ produto.unidade_estoque }}</td></tr>
+                    <tr><td class="text-muted">Custo Medio:</td><td class="text-end">{{ "%.5f"|format(produto.custo_medio or 0) }} / {{ produto.unidade_estoque }}</td></tr>
+                    <tr><td class="text-muted">Custo Ref.:</td><td class="text-end">{{ "%.6f"|format(produto.custo_referencia or 0) }} / {{ produto.unidade_estoque }}</td></tr>
+                    <tr><td class="text-muted">Markup:</td><td class="text-end">{{ "%.3f"|format(produto.markup or 0) }}%</td></tr>
+                    <tr><td class="text-muted">Venda:</td><td class="text-end"><strong>{{ "%.4f"|format(produto.valor_venda or 0) }} / {{ produto.unidade_estoque }}</strong></td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">Informacoes</h6>
+                <table class="table table-sm table-borderless mb-0">
+                    <tr><td class="text-muted">Grupo:</td><td>{{ produto.grupo_nome or '-' }}</td></tr>
+                    <tr><td class="text-muted">Fornecedor:</td><td>{{ produto.fornecedor_nome or '-' }}</td></tr>
+                    <tr><td class="text-muted">Ult. Compra:</td><td>{{ produto.ultima_compra or '-' }}</td></tr>
+                    <tr><td class="text-muted">Curva ABC:</td><td><span class="badge {{ 'bg-success' if produto.curva_abc == 'A' else ('bg-info' if produto.curva_abc == 'B' else 'bg-warning') }}">{{ produto.curva_abc or '-' }}</span></td></tr>
+                    <tr><td class="text-muted">Calculo:</td><td>{{ produto.tipo_calculo or '-' }}</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Details Tabs -->
+<ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#det-mp" type="button">Materia Prima</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#det-comp" type="button">Complemento</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#det-trib" type="button">Tributacao</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#det-obs" type="button">Observacao</button>
+    </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom p-3 mb-4">
+    <!-- Materia Prima -->
+    <div class="tab-pane fade show active" id="det-mp">
+        <div class="row">
+            <div class="col-md-6">
+                <table class="table table-sm">
+                    <tr><td class="text-muted" style="width:40%">U.M.:</td><td>{{ produto.unidade_manipulacao }}</td></tr>
+                    <tr><td class="text-muted">U.E.:</td><td>{{ produto.unidade_estoque }}</td></tr>
+                    <tr><td class="text-muted">Fator Correcao:</td><td>{{ produto.fator_correcao or '-' }}</td></tr>
+                    <tr><td class="text-muted">Fator Equivalencia:</td><td>{{ produto.fator_equivalencia or '-' }}</td></tr>
+                    <tr><td class="text-muted">Densidade:</td><td>{{ produto.densidade or '-' }} g/ml</td></tr>
+                    <tr><td class="text-muted">Diluicao:</td><td>{{ produto.diluicao or '-' }}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-sm">
+                    <tr><td class="text-muted" style="width:40%">Estoque Min.:</td><td>{{ "%.4f"|format(produto.estoque_minimo or 0) }} {{ produto.unidade_estoque }}</td></tr>
+                    <tr><td class="text-muted">Estoque Max.:</td><td>{{ "%.4f"|format(produto.estoque_maximo or 0) if produto.estoque_maximo else '-' }} {{ produto.unidade_estoque if produto.estoque_maximo else '' }}</td></tr>
+                    <tr><td class="text-muted">Dose Maxima:</td><td>{{ produto.dose_maxima or '-' }} {{ produto.dose_maxima_um or '' }}</td></tr>
+                    <tr><td class="text-muted">Dose Max./Dia:</td><td>{{ produto.dose_maxima_dia or '-' }} {{ produto.dose_maxima_dia_um or '' }}</td></tr>
+                    <tr><td class="text-muted">Concentracao:</td><td>{{ produto.concentracao or '-' }}</td></tr>
+                    <tr><td class="text-muted">Margem Seg.:</td><td>{{ produto.margem_seguranca or '-' }}{{ '%' if produto.margem_seguranca else '' }}</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Complemento -->
+    <div class="tab-pane fade" id="det-comp">
+        <table class="table table-sm">
+            <tr><td class="text-muted" style="width:30%">Desc. Rotulo:</td><td>{{ produto.descricao_rotulo or '-' }}</td></tr>
+            <tr><td class="text-muted">CAS:</td><td>{{ produto.cas or '-' }}</td></tr>
+            <tr><td class="text-muted">Lista Controlado:</td><td>{{ produto.lista_controlado or '-' }}</td></tr>
+            <tr><td class="text-muted">DCB:</td><td>{{ produto.dcb or '-' }}</td></tr>
+            <tr><td class="text-muted">DCI:</td><td>{{ produto.dci or '-' }}</td></tr>
+            <tr><td class="text-muted">Classe Terapeutica:</td><td>{{ produto.classe_terapeutica or '-' }}</td></tr>
+            <tr><td class="text-muted">Antimicrobiano:</td><td>{{ 'Sim' if produto.antimicrobiano else 'Nao' }}</td></tr>
+            <tr><td class="text-muted">Controle Especial:</td><td>{{ 'Sim' if produto.controle_especial else 'Nao' }}</td></tr>
+            <tr><td class="text-muted">Uso Continuo:</td><td>{{ 'Sim' if produto.uso_continuo else 'Nao' }}</td></tr>
+        </table>
+    </div>
+
+    <!-- Tributacao -->
+    <div class="tab-pane fade" id="det-trib">
+        <table class="table table-sm">
+            <tr><td class="text-muted" style="width:30%">NBM/SH:</td><td>{{ produto.nbm_sh or '-' }}</td></tr>
+            <tr><td class="text-muted">NCM/SH:</td><td>{{ produto.ncm_sh or '-' }}</td></tr>
+            <tr><td class="text-muted">Fabricante:</td><td>{{ produto.fabricante or '-' }}</td></tr>
+            <tr><td class="text-muted">Lic. MAPA:</td><td>{{ produto.num_licenca_mapa or '-' }}</td></tr>
+            <tr><td class="text-muted">Inativo Compras:</td><td>{{ 'Sim' if produto.inativo_compras else 'Nao' }}</td></tr>
+            <tr><td class="text-muted">Produto Inativo:</td><td>{{ 'Sim' if produto.produto_inativo else 'Nao' }}</td></tr>
+        </table>
+    </div>
+
+    <!-- Observacao -->
+    <div class="tab-pane fade" id="det-obs">
+        <p>{{ produto.observacao or 'Sem observacoes.' }}</p>
+    </div>
+</div>
+
+<!-- Estoque Modal -->
+<div class="modal fade" id="estoqueModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="estoqueModalTitle">Movimentacao de Estoque</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="mov-produto-id">
+                <input type="hidden" id="mov-operacao">
+                <label class="form-label form-label-sm">Quantidade ({{ produto.unidade_estoque }})</label>
+                <input type="number" id="mov-quantidade" class="form-control" step="0.0001" min="0">
+            </div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="confirmarMov()">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function movEstoque(produtoId, operacao) {
+    document.getElementById('mov-produto-id').value = produtoId;
+    document.getElementById('mov-operacao').value = operacao;
+    document.getElementById('mov-quantidade').value = '';
+    document.getElementById('estoqueModalTitle').textContent =
+        operacao === 'entrada' ? 'Entrada de Estoque' : 'Saida de Estoque';
+    new bootstrap.Modal(document.getElementById('estoqueModal')).show();
+}
+
+function confirmarMov() {
+    const produtoId = document.getElementById('mov-produto-id').value;
+    const operacao = document.getElementById('mov-operacao').value;
+    const quantidade = parseFloat(document.getElementById('mov-quantidade').value);
+
+    if (!quantidade || quantidade <= 0) {
+        alert('Informe uma quantidade valida.');
+        return;
+    }
+
+    fetch(`/api/produto/${produtoId}/estoque`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantidade, operacao })
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('estoque-display').textContent = data.posicao_estoque.toFixed(4);
+        bootstrap.Modal.getInstance(document.getElementById('estoqueModal')).hide();
+    })
+    .catch(err => alert('Erro ao atualizar estoque.'));
+}
+</script>
+{% endblock %}
