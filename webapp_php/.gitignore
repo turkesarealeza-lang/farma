@@ -1,0 +1,3 @@
+tarefas/data/config.php
+tarefas/data/*.sqlite*
+tarefas/data/cron.lock
