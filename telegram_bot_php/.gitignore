@@ -1,0 +1,3 @@
+lembretes/data/config.php
+lembretes/data/*.sqlite*
+lembretes/data/cron.lock
