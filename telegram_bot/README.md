@@ -15,27 +15,15 @@ Mande texto ou áudio ("me lembra de pagar o boleto sexta às 10h"). Na hora mar
 4. Rode (abaixo), mande `/start` pro bot, copie seu chat ID para `ALLOWED_CHAT_IDS` e reinicie. **Sem isso, qualquer pessoa que achar o bot pode usá-lo (e gastar sua cota da IA).**
 
 ## Rodar na VPS da Hostinger
-1. **Acesse o terminal**: hPanel → VPS → *Gerenciar* → botão **Terminal do navegador** (ou `ssh root@IP_DA_VPS`).
-2. **Instale Docker** (pule se escolheu o template "Ubuntu com Docker"):
-   ```bash
-   curl -fsSL https://get.docker.com | sh
-   ```
-3. **Baixe o código** (repo privado: o Git pede usuário + [token do GitHub](https://github.com/settings/tokens) como senha):
-   ```bash
-   git clone -b claude/telegram-task-reminder-bot-q4xjhq https://github.com/turkesarealeza-lang/farma.git
-   cd farma/telegram_bot
-   cp .env.example .env && nano .env   # preencha TELEGRAM_TOKEN e AI_API_KEY; Ctrl+O, Enter, Ctrl+X
-   ```
-4. **Suba o bot**:
-   ```bash
-   docker compose up -d --build
-   docker compose logs -f   # deve aparecer "bot started"; Ctrl+C sai sem parar o bot
-   ```
-5. Mande `/start` no Telegram, copie o chat ID para `ALLOWED_CHAT_IDS` no `.env` e rode `docker compose up -d`.
+No terminal da VPS (hPanel → VPS → Gerenciar → Terminal do navegador):
+```bash
+curl -fsSL https://raw.githubusercontent.com/turkesarealeza-lang/farma/claude/telegram-task-reminder-bot-q4xjhq/telegram_bot/instalar.sh | bash
+```
+O instalador instala o Docker, baixa o código em `/opt/lembretes`, pede o token e a chave do Groq (e valida os dois), descobre seu chat ID e sobe o bot. Ele reinicia sozinho se a VPS reiniciar.
 
-O bot reinicia sozinho se a VPS reiniciar. Os lembretes ficam em `telegram_bot/data/`.
+**Atualizar depois:** rode o mesmo comando de novo (mantém a configuração e os lembretes).
 
-**Atualizar depois:** `git pull && docker compose up -d --build`
+**Ver logs:** `cd /opt/lembretes/telegram_bot && docker compose logs -f`
 
 **Rodar no PC (teste):** `pip install -r requirements.txt && python bot.py`
 
