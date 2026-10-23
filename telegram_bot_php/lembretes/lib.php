@@ -116,6 +116,12 @@ function db(): PDO
                 PRIMARY KEY (chat_id, message_id)
             );
             CREATE TABLE IF NOT EXISTS updates (update_id INTEGER PRIMARY KEY, at INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS users (
+                chat_id    INTEGER PRIMARY KEY,
+                name       TEXT    NOT NULL,
+                status     TEXT    NOT NULL DEFAULT 'pending', -- pending | approved | blocked
+                created_at INTEGER NOT NULL
+            );
         ");
     }
     return $pdo;
@@ -227,9 +233,46 @@ function nag_keyboard(int $id): array
     ];
 }
 
-function allowed(int $chatId): bool
+/** Admins come from the config (whoever ran the installer); everyone else needs an admin's approval. */
+function is_admin(int $chatId): bool
 {
     return in_array($chatId, cfg()['allowed_chat_ids'], true);
+}
+
+function user_status(int $chatId): ?string
+{
+    return q('SELECT status FROM users WHERE chat_id = ?', [$chatId])->fetchColumn() ?: null;
+}
+
+function allowed(int $chatId): bool
+{
+    return is_admin($chatId) || user_status($chatId) === 'approved';
+}
+
+function request_access(array $m): void
+{
+    $chatId = (int)$m['chat']['id'];
+    $status = user_status($chatId);
+    if ($status === 'blocked') {
+        return;
+    }
+    if ($status === 'pending') {
+        send($chatId, '⏳ Seu acesso ainda está aguardando aprovação.');
+        return;
+    }
+    $from = $m['from'] ?? [];
+    $name = trim(($from['first_name'] ?? '') . ' ' . ($from['last_name'] ?? '')) ?: "ID $chatId";
+    if (!empty($from['username'])) {
+        $name .= " (@{$from['username']})";
+    }
+    q('INSERT INTO users (chat_id, name, created_at) VALUES (?, ?, ?)', [$chatId, $name, time()]);
+    foreach (cfg()['allowed_chat_ids'] as $admin) {
+        send((int)$admin, '👤 <b>' . e($name) . '</b> quer usar o bot de lembretes.', [[
+            ['text' => '✅ Liberar', 'callback_data' => "approve:$chatId"],
+            ['text' => '🚫 Recusar', 'callback_data' => "deny:$chatId"],
+        ]]);
+    }
+    send($chatId, '🔒 Este bot é privado. Pedi autorização ao administrador; você recebe uma mensagem aqui quando for liberado.');
 }
 
 // ---------- update handling ----------
@@ -240,6 +283,7 @@ const HELP = "Me mande um texto ou áudio dizendo o que e quando. Exemplos:\n"
     . "• <i>Daqui 40 minutos tirar o bolo do forno</i>\n\n"
     . "Na hora marcada eu te aviso e cobro a cada 5 min até você responder <b>sim</b> (ou tocar em ✅).\n\n"
     . "/lista – lembretes abertos\n/cancelar &lt;id&gt; – cancela um lembrete\n/feito &lt;id&gt; – marca como feito";
+const ADMIN_HELP = "\n\n<b>Administrador</b>\n/usuarios – quem usa o bot\n/remover &lt;id&gt; – tira o acesso de alguém\n/liberar &lt;id&gt; – libera alguém recusado/removido";
 
 function handle_update(array $u): void
 {
@@ -254,7 +298,7 @@ function handle_message(array $m): void
 {
     $chatId = (int)$m['chat']['id'];
     if (!allowed($chatId)) {
-        send($chatId, "Bot privado. Seu chat ID é <code>$chatId</code>.");
+        request_access($m);
         return;
     }
 
@@ -337,7 +381,39 @@ function handle_command(int $chatId, string $cmd, string $arg): void
         case 'start':
         case 'help':
         case 'ajuda':
-            send($chatId, HELP);
+            send($chatId, HELP . (is_admin($chatId) ? ADMIN_HELP : ''));
+            return;
+        case 'usuarios':
+            if (!is_admin($chatId)) {
+                break;
+            }
+            $users = q('SELECT * FROM users ORDER BY status, name')->fetchAll();
+            $icons = ['approved' => '✅', 'pending' => '⏳', 'blocked' => '🚫'];
+            $lines = array_map(fn($u) => $icons[$u['status']] . ' ' . e($u['name'])
+                . " — <code>{$u['chat_id']}</code>", $users);
+            send($chatId, $lines ? implode("\n", $lines) . "\n\nPara tirar o acesso: /remover &lt;id&gt;" : 'Só você usa o bot por enquanto.');
+            return;
+        case 'remover':
+            if (!is_admin($chatId)) {
+                break;
+            }
+            $uid = (int)$arg;
+            $n = q("UPDATE users SET status = 'blocked' WHERE chat_id = ?", [$uid])->rowCount();
+            if ($n) {
+                q("UPDATE tasks SET status = 'canceled', done_at = ? WHERE chat_id = ? AND status IN ('scheduled', 'nagging')", [time(), $uid]);
+            }
+            send($chatId, $n ? '🚫 Acesso removido e lembretes dessa pessoa cancelados.' : 'ID não encontrado. Veja em /usuarios.');
+            return;
+        case 'liberar':
+            if (!is_admin($chatId)) {
+                break;
+            }
+            $uid = (int)$arg;
+            $n = q("UPDATE users SET status = 'approved' WHERE chat_id = ?", [$uid])->rowCount();
+            if ($n) {
+                send($uid, "✅ <b>Acesso liberado!</b>\n\n" . HELP);
+            }
+            send($chatId, $n ? '✅ Acesso liberado.' : 'ID não encontrado. Veja em /usuarios.');
             return;
         case 'lista':
             $tasks = open_tasks($chatId);
@@ -360,9 +436,8 @@ function handle_command(int $chatId, string $cmd, string $arg): void
             $t = close_task($id, $chatId, $done ? 'done' : 'canceled');
             send($chatId, $t ? ($done ? '✅ Feito: ' : '🗑️ Cancelado: ') . e($t['text']) : 'Lembrete não encontrado ou já fechado.');
             return;
-        default:
-            send($chatId, 'Comando desconhecido. Mande /ajuda.');
     }
+    send($chatId, 'Comando desconhecido. Mande /ajuda.');
 }
 
 function create_reminder(int $chatId, string $text): void
@@ -421,6 +496,19 @@ function handle_button(array $cb): void
         $label = $action === 'done' ? '✅ Feito' : '🗑️ Cancelado';
         $answer($label);
         $edit("$label: <b>" . e($t['text']) . '</b>');
+    } elseif (($action === 'approve' || $action === 'deny') && is_admin($chatId)) {
+        $approve = $action === 'approve';
+        $n = q("UPDATE users SET status = ? WHERE chat_id = ? AND status = 'pending'", [$approve ? 'approved' : 'blocked', $id])->rowCount();
+        $name = q('SELECT name FROM users WHERE chat_id = ?', [$id])->fetchColumn() ?: "ID $id";
+        if (!$n) {
+            $answer('Esse pedido já foi respondido.');
+            return;
+        }
+        $answer($approve ? 'Liberado' : 'Recusado');
+        $edit(($approve ? '✅ Liberado: <b>' : '🚫 Recusado: <b>') . e($name) . '</b>');
+        if ($approve) {
+            send($id, "✅ <b>Acesso liberado!</b>\n\n" . HELP);
+        }
     } elseif ($action === 'snooze') {
         $until = ($parts[2] ?? '') === 'tomorrow'
             ? (new DateTime('tomorrow 09:00'))->getTimestamp()

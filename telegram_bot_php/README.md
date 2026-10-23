@@ -8,6 +8,10 @@ Mesmo bot da pasta `telegram_bot/`, reescrito para hospedagem compartilhada: o T
 3. **Instalador**: abra `https://SEU-DOMINIO/lembretes/install.php`, cole o token do BotFather e a chave do Groq, mande "oi" pro bot quando pedir.
 4. **Cron**: hPanel → Sites → Painel → **Cron Jobs** → tipo **PHP**, comando que o instalador mostrar, frequência **a cada minuto**.
 
+## Várias pessoas
+Quem rodou o instalador é o **administrador**. Quando outra pessoa manda mensagem ao bot, o admin recebe um aviso com **✅ Liberar / 🚫 Recusar**. Cada pessoa só vê e fecha os próprios lembretes.
+Comandos do admin: `/usuarios`, `/remover <id>`, `/liberar <id>`. Para ter mais de um admin, adicione o chat ID em `allowed_chat_ids` no `data/config.php`.
+
 ## Arquivos
 | Arquivo | Função |
 |---|---|

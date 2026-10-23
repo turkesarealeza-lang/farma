@@ -97,9 +97,9 @@ if ($step === 'chat' && isset($_SESSION['token'], $_SESSION['key'])) {
             . '</p><p>Confira se o SSL (https) do domínio está ativo no hPanel e tente de novo.</p>'
             . '<form method="post"><input type="hidden" name="step" value="chat"><button>Tentar de novo</button></form>');
     }
-    send($chatId, "✅ <b>Bot instalado!</b>\n\n" . HELP);
+    send($chatId, "✅ <b>Bot instalado!</b> Você é o administrador.\n\n" . HELP . ADMIN_HELP);
     session_destroy();
-    page('<p class="ok">✔ Configuração salva. Seu chat ID: <code>' . $chatId . '</code> (só você pode usar o bot).</p>'
+    page('<p class="ok">✔ Configuração salva. Seu chat ID: <code>' . $chatId . '</code> (você é o administrador: quando alguém novo mandar mensagem ao bot, você recebe um botão para liberar ou recusar).</p>'
         . '<p class="ok">✔ Webhook registrado. Você deve ter recebido uma mensagem do bot no Telegram.</p>' . cron_help());
 }
 
