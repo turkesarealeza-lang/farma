@@ -9,7 +9,7 @@ client = AsyncOpenAI(
     api_key=os.environ["AI_API_KEY"],
     base_url=os.getenv("AI_BASE_URL", "https://api.groq.com/openai/v1"),
 )
-CHAT_MODEL = os.getenv("AI_CHAT_MODEL", "llama-3.3-70b-versatile")
+CHAT_MODEL = os.getenv("AI_CHAT_MODEL", "openai/gpt-oss-120b")
 STT_MODEL = os.getenv("AI_STT_MODEL", "whisper-large-v3-turbo")
 
 WEEKDAYS = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",

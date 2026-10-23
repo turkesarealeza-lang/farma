@@ -21,7 +21,7 @@ function cfg(): array
         $c = (require CONFIG_FILE) + [
             'tg_base' => tg_base(),
             'ai_base' => ai_base(),
-            'ai_chat_model' => 'llama-3.3-70b-versatile',
+            'ai_chat_model' => 'openai/gpt-oss-120b',
             'ai_stt_model' => 'whisper-large-v3-turbo',
         ];
     }
@@ -200,13 +200,32 @@ Regras:
 - \"de manhã\" = 09:00, \"à tarde\" = 14:00, \"à noite\" = 20:00, \"meio-dia\" = 12:00.
 - Se não houver nenhuma indicação de quando, use \"datetime\": null.
 - Se a mensagem não for um pedido de lembrete, use \"task\": null e \"datetime\": null.";
-    $d = ai('/chat/completions', ['json' => [
-        'model' => cfg()['ai_chat_model'],
-        'temperature' => 0,
-        'response_format' => ['type' => 'json_object'],
-        'messages' => [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => $text]],
-    ]]);
-    $out = json_decode($d['choices'][0]['message']['content'] ?? '', true) ?: [];
+    // Providers retire models; fall back to a second one so the bot keeps working.
+    $models = array_unique([cfg()['ai_chat_model'], 'openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
+    foreach ($models as $i => $model) {
+        try {
+            $d = ai('/chat/completions', ['json' => [
+                'model' => $model,
+                'temperature' => 0,
+                'response_format' => ['type' => 'json_object'],
+                'messages' => [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => $text]],
+            ]]);
+            break;
+        } catch (RuntimeException $ex) {
+            error_log("lembretes: modelo $model falhou: " . $ex->getMessage());
+            if ($i === array_key_last($models)) {
+                throw $ex;
+            }
+        }
+    }
+    $content = $d['choices'][0]['message']['content'] ?? '';
+    $out = json_decode($content, true);
+    if (!is_array($out) && preg_match('/\{.*\}/s', $content, $m)) {
+        $out = json_decode($m[0], true);
+    }
+    if (!is_array($out)) {
+        throw new RuntimeException('Resposta da IA sem JSON: ' . mb_substr($content, 0, 200));
+    }
     return ['task' => $out['task'] ?? null, 'datetime' => $out['datetime'] ?? null];
 }
 
@@ -215,6 +234,12 @@ Regras:
 function fmt_when(int $ts): string
 {
     return WEEKDAYS_SHORT[(int)date('w', $ts)] . ' ' . date('d/m \à\s H:i', $ts);
+}
+
+/** Technical detail appended to error messages, shown only to admins. */
+function error_detail(int $chatId, Throwable $ex): string
+{
+    return is_admin($chatId) ? "\n\n🔧 <code>" . e(mb_substr($ex->getMessage(), 0, 400)) . '</code>' : '';
 }
 
 function short_reply(string $text, string $pattern): bool
@@ -363,7 +388,7 @@ function voice_to_text(int $chatId, array $media): ?string
         $text = transcribe($tmp);
     } catch (Throwable $ex) {
         error_log('lembretes: transcrição falhou: ' . $ex->getMessage());
-        send($chatId, 'Não consegui transcrever o áudio. Tenta de novo ou manda por texto.');
+        send($chatId, 'Não consegui transcrever o áudio. Tenta de novo ou manda por texto.' . error_detail($chatId, $ex));
         return null;
     } finally {
         @unlink($tmp);
@@ -446,7 +471,7 @@ function create_reminder(int $chatId, string $text): void
         $p = parse_reminder($text);
     } catch (Throwable $ex) {
         error_log('lembretes: parse falhou: ' . $ex->getMessage());
-        send($chatId, 'Deu erro ao interpretar a mensagem. Tenta de novo em instantes.');
+        send($chatId, 'Deu erro ao interpretar a mensagem. Tenta de novo em instantes.' . error_detail($chatId, $ex));
         return;
     }
     if (!$p['task']) {
