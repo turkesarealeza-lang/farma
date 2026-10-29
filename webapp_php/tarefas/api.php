@@ -30,21 +30,15 @@ function user_json(array $u): array
     return ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email'], 'is_admin' => (bool)$u['is_admin']];
 }
 
-/** Turns free text (typed or transcribed) into a task, or tells the app what is missing. */
-function create_from_text(array $u, string $text): array
+/** Turns free text (typed or spoken) into a title and date for the editor to fill in; nothing is saved. */
+function parse_text(string $text): array
 {
     $p = parse_reminder($text);
     if (!$p['task']) {
-        throw new ApiError('Não entendi como lembrete. Ex: "ligar pro João amanhã às 14h".', 422);
+        throw new ApiError('Não entendi como tarefa. Ex: "ligar pro João amanhã às 14h".', 422);
     }
     $due = $p['datetime'] ? parse_local($p['datetime']) : null;
-    if (!$due) {
-        return ['need_date' => true, 'text' => $p['task']];
-    }
-    if ($due < time() - 60) {
-        return ['need_date' => true, 'text' => $p['task'], 'error' => 'Esse horário já passou. Escolha uma data futura.'];
-    }
-    return ['task' => save_task((int)$u['id'], null, $p['task'], $due)];
+    return ['title' => $p['task'], 'due_at' => $due && $due > time() - 60 ? $due : null];
 }
 
 $a = $_GET['a'] ?? '';
@@ -76,12 +70,12 @@ try {
 
         case 'tasks:GET':
             $open = q("SELECT * FROM tasks WHERE user_id = ? AND status IN ('scheduled', 'nagging') ORDER BY due_at", [$uid])->fetchAll();
-            $done = q("SELECT * FROM tasks WHERE user_id = ? AND status = 'done' AND done_at > ? ORDER BY done_at DESC LIMIT 30",
-                [$uid, time() - 30 * 86400])->fetchAll();
+            $done = q("SELECT * FROM tasks WHERE user_id = ? AND status = 'done' AND done_at > ? ORDER BY done_at DESC LIMIT 200",
+                [$uid, time() - 62 * 86400])->fetchAll();
             out(['open' => array_map('task_json', $open), 'done' => array_map('task_json', $done), 'now' => time()]);
 
-        case 'create:POST':
-            out(create_from_text($u, trim((string)(input()['text'] ?? ''))));
+        case 'parse:POST':
+            out(parse_text(trim((string)(input()['text'] ?? ''))));
 
         case 'audio:POST':
             $f = $_FILES['audio'] ?? null;
@@ -94,7 +88,7 @@ try {
             if ($text === '') {
                 throw new ApiError('Não entendi nada no áudio. Tente de novo.', 422);
             }
-            out(['transcript' => $text] + create_from_text($u, $text));
+            out(['transcript' => $text] + parse_text($text));
 
         case 'save:POST':
             $in = input();
@@ -102,12 +96,24 @@ try {
             if (!$due) {
                 throw new ApiError('Escolha data e hora.');
             }
-            out(['task' => save_task($uid, isset($in['id']) ? (int)$in['id'] : null, (string)($in['text'] ?? ''), $due)]);
+            out(['task' => save_task($uid, !empty($in['id']) ? (int)$in['id'] : null, $in, $due)]);
+
+        case 'check:POST':  // tick or untick one checklist item
+            $in = input();
+            $t = get_task((int)($in['id'] ?? 0), $uid);
+            $items = json_decode($t['checklist'], true) ?: [];
+            $i = (int)($in['index'] ?? -1);
+            if (!isset($items[$i])) {
+                throw new ApiError('Item não encontrado.', 404);
+            }
+            $items[$i]['done'] = !empty($in['done']);
+            q('UPDATE tasks SET checklist = ? WHERE id = ?', [json_encode($items, JSON_UNESCAPED_UNICODE), $t['id']]);
+            out(['task' => task_json(get_task((int)$t['id'], $uid))]);
 
         case 'act:POST':
             $in = input();
             $id = (int)($in['id'] ?? 0);
-            get_task($id, $uid);
+            $task = get_task($id, $uid);
             $open = "AND status IN ('scheduled', 'nagging')";
             switch ($in['action'] ?? '') {
                 case 'done':
@@ -121,10 +127,13 @@ try {
                        due_at = MAX(due_at, ?) WHERE id = ? AND status = 'done'", [time() + 300, $id]);
                     break;
                 case 'snooze':
-                    $until = ($in['until'] ?? '') === 'tomorrow'
-                        ? (new DateTime('tomorrow 09:00'))->getTimestamp()
-                        : time() + max(1, (int)($in['minutes'] ?? 30)) * 60;
-                    q("UPDATE tasks SET due_at = ?, status = 'scheduled', last_nag_at = NULL WHERE id = ? $open", [$until, $id]);
+                    if (($in['until'] ?? '') === 'tomorrow') {  // same time of day, next day; becomes the new base time
+                        $until = tomorrow_same_time($task);
+                        q("UPDATE tasks SET due_at = ?, base_at = ?, status = 'scheduled', last_nag_at = NULL WHERE id = ? $open", [$until, $until, $id]);
+                    } else {
+                        $until = time() + max(1, (int)($in['minutes'] ?? 5)) * 60;
+                        q("UPDATE tasks SET due_at = ?, status = 'scheduled', last_nag_at = NULL WHERE id = ? $open", [$until, $id]);
+                    }
                     break;
                 default:
                     throw new ApiError('Ação inválida.');

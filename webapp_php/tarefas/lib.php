@@ -5,7 +5,8 @@ declare(strict_types=1);
 date_default_timezone_set('America/Sao_Paulo');
 
 const CONFIG_FILE = __DIR__ . '/data/config.php';
-const NAG_INTERVAL = 300;        // seconds between nags
+const NAG_INTERVAL = 300;        // seconds between nags for notification tasks
+const ALARM_INTERVAL = 60;       // alarm tasks ring again every minute until handled
 const AUTH_COOKIE = 'tarefas_auth';
 const SESSION_DAYS = 180;
 const WEEKDAYS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
@@ -110,6 +111,20 @@ function db(): PDO
                 created_at INTEGER NOT NULL
             );
         ");
+        // Columns added after the first release; existing databases get them here.
+        $cols = array_column($pdo->query('PRAGMA table_info(tasks)')->fetchAll(), 'name');
+        $new = [
+            'notes' => "TEXT NOT NULL DEFAULT ''",
+            'checklist' => "TEXT NOT NULL DEFAULT '[]'",
+            'desc_type' => "TEXT NOT NULL DEFAULT 'text'",  // text | checklist
+            'mode' => "TEXT NOT NULL DEFAULT 'push'",       // push | alarm
+            'base_at' => 'INTEGER',                          // time the user picked, kept through snoozes
+        ];
+        foreach ($new as $col => $def) {
+            if (!in_array($col, $cols, true)) {
+                $pdo->exec("ALTER TABLE tasks ADD COLUMN $col $def");
+            }
+        }
     }
     return $pdo;
 }
@@ -287,9 +302,34 @@ function parse_local(string $s): ?int
 function task_json(array $t): array
 {
     return [
-        'id' => (int)$t['id'], 'text' => $t['text'], 'due_at' => (int)$t['due_at'], 'status' => $t['status'],
+        'id' => (int)$t['id'], 'title' => $t['text'], 'due_at' => (int)$t['due_at'], 'status' => $t['status'],
         'nag_count' => (int)$t['nag_count'], 'done_at' => $t['done_at'] === null ? null : (int)$t['done_at'],
+        'mode' => $t['mode'], 'desc_type' => $t['desc_type'], 'notes' => $t['notes'],
+        'checklist' => json_decode($t['checklist'], true) ?: [],
     ];
+}
+
+/** Validates the checklist sent by the app: [{t: string, done: bool}, ...]. */
+function clean_checklist($items): array
+{
+    $out = [];
+    foreach (is_array($items) ? array_slice($items, 0, 100) : [] as $it) {
+        $t = trim(mb_substr((string)($it['t'] ?? ''), 0, 300));
+        if ($t !== '') {
+            $out[] = ['t' => $t, 'done' => !empty($it['done'])];
+        }
+    }
+    return $out;
+}
+
+/** Tomorrow (counting from now) at the time of day the user originally picked. */
+function tomorrow_same_time(array $t): int
+{
+    $base = new DateTime('@' . (int)($t['base_at'] ?? $t['due_at']));
+    $base->setTimezone(new DateTimeZone(date_default_timezone_get()));
+    $d = new DateTime('tomorrow');
+    $d->setTime((int)$base->format('H'), (int)$base->format('i'));
+    return $d->getTimestamp();
 }
 
 function get_task(int $id, int $userId): array
@@ -301,21 +341,29 @@ function get_task(int $id, int $userId): array
     return $t;
 }
 
-function save_task(int $userId, ?int $id, string $text, int $due): array
+/** Creates or updates a task from the editor's fields. */
+function save_task(int $userId, ?int $id, array $in, int $due): array
 {
-    $text = trim($text);
-    if ($text === '') {
-        throw new ApiError('Descreva a tarefa.');
+    $title = trim(mb_substr((string)($in['title'] ?? ''), 0, 200));
+    if ($title === '') {
+        throw new ApiError('Dê um título para a tarefa.');
     }
     if ($due < time() - 60) {
         throw new ApiError('Esse horário já passou. Escolha uma data futura.');
     }
+    $mode = ($in['mode'] ?? '') === 'alarm' ? 'alarm' : 'push';
+    $descType = ($in['desc_type'] ?? '') === 'checklist' ? 'checklist' : 'text';
+    $notes = trim(mb_substr((string)($in['notes'] ?? ''), 0, 5000));
+    $checklist = json_encode(clean_checklist($in['checklist'] ?? []), JSON_UNESCAPED_UNICODE);
+    $fields = [$title, $due, $due, $mode, $descType, $notes, $checklist];
     if ($id) {
         get_task($id, $userId);
-        q("UPDATE tasks SET text = ?, due_at = ?, status = 'scheduled', last_nag_at = NULL, nag_count = 0, done_at = NULL
-           WHERE id = ? AND user_id = ?", [$text, $due, $id, $userId]);
+        q("UPDATE tasks SET text = ?, due_at = ?, base_at = ?, mode = ?, desc_type = ?, notes = ?, checklist = ?,
+           status = 'scheduled', last_nag_at = NULL, nag_count = 0, done_at = NULL WHERE id = ? AND user_id = ?",
+            [...$fields, $id, $userId]);
     } else {
-        q('INSERT INTO tasks (user_id, text, due_at, created_at) VALUES (?, ?, ?, ?)', [$userId, $text, $due, time()]);
+        q('INSERT INTO tasks (text, due_at, base_at, mode, desc_type, notes, checklist, user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [...$fields, $userId, time()]);
         $id = (int)db()->lastInsertId();
     }
     return task_json(get_task($id, $userId));
@@ -441,14 +489,21 @@ function run_nags(): int
     $now = time();
     // 30s tolerance so a cron firing a few seconds early doesn't push the nag to the next minute.
     $due = q("SELECT * FROM tasks WHERE status IN ('scheduled', 'nagging') AND due_at <= ?
-              AND (last_nag_at IS NULL OR last_nag_at <= ?) ORDER BY due_at", [$now, $now - NAG_INTERVAL + 30])->fetchAll();
+              AND (last_nag_at IS NULL OR last_nag_at <= ? - CASE mode WHEN 'alarm' THEN ? ELSE ? END + 30)
+              ORDER BY due_at", [$now, $now, ALARM_INTERVAL, NAG_INTERVAL])->fetchAll();
     $sent = 0;
     foreach ($due as $t) {
         $count = (int)$t['nag_count'];
-        $title = $count === 0
-            ? '⏰ Lembrete'
-            : "🔔 Cobrança #$count · " . intdiv($now - (int)$t['due_at'], 60) . ' min de atraso';
-        $sent += push_user((int)$t['user_id'], ['title' => $title, 'body' => $t['text'] . ' — já fez?', 'id' => (int)$t['id']], "task{$t['id']}");
+        $late = intdiv($now - (int)$t['due_at'], 60);
+        if ($t['mode'] === 'alarm') {
+            $title = '⏰ ' . date('H:i', (int)$t['due_at']) . ' · ' . $t['text'];
+            $body = $count === 0 ? 'Alarme! Toque para abrir.' : "Alarme tocando há $late min. Toque para abrir.";
+        } else {
+            $title = $count === 0 ? '🔔 ' . $t['text'] : "🔔 Cobrança #$count · $late min de atraso";
+            $body = $count === 0 ? 'Já fez?' : $t['text'] . ' — já fez?';
+        }
+        $payload = ['title' => $title, 'body' => $body, 'id' => (int)$t['id'], 'mode' => $t['mode']];
+        $sent += push_user((int)$t['user_id'], $payload, "task{$t['id']}");
         // Mark as nagged even without a device, so the cadence stays every 5 minutes.
         q("UPDATE tasks SET status = 'nagging', last_nag_at = ?, nag_count = nag_count + 1 WHERE id = ?", [$now, $t['id']]);
     }

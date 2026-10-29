@@ -1,7 +1,7 @@
 'use strict';
 // Service worker: shows push notifications, handles their buttons, and caches the app shell.
 
-const CACHE = 'tarefas-v1';
+const CACHE = 'tarefas-v2';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/badge-96.png'];
 
 self.addEventListener('install', (e) => {
@@ -43,11 +43,16 @@ self.addEventListener('push', (e) => {
   };
   if (d.id) {
     // One notification per task: each nag replaces the previous one but still rings.
+    const alarm = d.mode === 'alarm';
     Object.assign(opts, {
       tag: 'task-' + d.id,
       renotify: true,
       requireInteraction: true,
-      actions: [{ action: 'done', title: '✅ Feito' }, { action: 'snooze', title: '⏰ 30 min' }],
+      vibrate: alarm ? [800, 300, 800, 300, 800, 300, 800, 300, 800] : [200, 100, 200],
+      data: { id: d.id, mode: d.mode },
+      actions: alarm
+        ? [{ action: 'snooze5', title: 'Adiar 5 min' }, { action: 'done', title: 'Concluir' }]
+        : [{ action: 'done', title: 'Concluir' }, { action: 'snooze30', title: 'Adiar 30 min' }],
     });
   }
   e.waitUntil(Promise.all([self.registration.showNotification(d.title || 'Tarefas', opts), notifyClients({ type: 'refresh' })]));
@@ -57,8 +62,8 @@ self.addEventListener('notificationclick', (e) => {
   const id = e.notification.data?.id;
   e.notification.close();
 
-  if (id && (e.action === 'done' || e.action === 'snooze')) {
-    const body = e.action === 'done' ? { id, action: 'done' } : { id, action: 'snooze', minutes: 30 };
+  if (id && ['done', 'snooze5', 'snooze30'].includes(e.action)) {
+    const body = e.action === 'done' ? { id, action: 'done' } : { id, action: 'snooze', minutes: e.action === 'snooze5' ? 5 : 30 };
     e.waitUntil(fetch('api.php?a=act', {
       method: 'POST',
       credentials: 'same-origin',

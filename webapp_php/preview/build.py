@@ -23,12 +23,12 @@ body { display: flex; flex-direction: column; align-items: center; gap: 14px;
 .pv-group { display: inline-flex; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 2px; }
 .pv-group button { border: 0; padding: 5px 10px; font-size: .82rem; border-radius: 8px; background: transparent; color: var(--muted); }
 .pv-group button[aria-pressed="true"] { background: var(--primary); color: var(--primary-text); }
-.pv-bar > button { padding: 6px 10px; font-size: .82rem; }
+.pv-bar > button { padding: 6px 12px; font-size: .82rem; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px; }
 .pv-phone { position: relative; transform: translateZ(0); width: 390px; height: min(800px, calc(100dvh - 120px)); min-height: 560px; flex: none;
-  border: 10px solid #1f2329; border-radius: 44px; overflow: hidden; background: var(--bg);
+  border: 10px solid #2a2826; border-radius: 44px; overflow: hidden; background: var(--bg);
   box-shadow: 0 20px 50px rgb(0 0 0 / .18); }
 .pv-screen { height: 100%; overflow-y: auto; overscroll-behavior: contain; }
-.pv-screen .topbar { top: 0; padding-top: 14px; }
+.pv-screen .top { padding-top: 14px; }
 .pv-note { font-size: .78rem; color: var(--muted); text-align: center; max-width: 420px; }
 @media (max-width: 480px) {
   body { padding: 0; gap: 0; }
@@ -46,7 +46,6 @@ CHROME_JS = """
     const b = e.target.closest('button'); if (!b) return;
     press(g, b);
     const v = b.dataset.v;
-    if (g.id === 'pv-theme') { if (v === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', v); }
     if (g.id === 'pv-screen') {
       if (v === 'login') { window.__previewLoggedOut = true; showLogin(); }
       else { window.__previewLoggedOut = false; const me = await api('me'); Object.assign(state, { user: me.user, vapid: me.vapid }); showApp(); }
@@ -58,6 +57,12 @@ CHROME_JS = """
     if (t) Object.assign(t, { status: 'nagging', due_at: Math.floor(Date.now() / 1000) - 60, nag_count: 1 });
     loadTasks();
   });
+  document.getElementById('pv-alarm').addEventListener('click', () => {
+    const p = window.__preview, d = p.db();
+    d.tasks.push(p.T({ id: p.nextId(), title: 'Tomar remédio', due_at: Math.floor(Date.now() / 1000) - 2, mode: 'alarm', notes: '1 comprimido depois do almoço' }));
+    Sound.unlock();
+    loadTasks();
+  });
   document.getElementById('pv-reset').addEventListener('click', () => { window.__preview.reset(); state.highlight = null; loadTasks(); });
 })();
 """
@@ -66,14 +71,15 @@ TOOLBAR = """
 <div class="pv-bar" role="toolbar" aria-label="Controles da prévia">
   <strong>Prévia</strong>
   <span class="pv-group" id="pv-screen"><button data-v="app" aria-pressed="true">App</button><button data-v="login" aria-pressed="false">Login</button></span>
-  <span class="pv-group" id="pv-theme"><button data-v="auto" aria-pressed="true">Auto</button><button data-v="light" aria-pressed="false">Claro</button><button data-v="dark" aria-pressed="false">Escuro</button></span>
   <span class="pv-group" id="pv-notif" title="Estado das notificações"><button data-v="default" aria-pressed="true">🔔 Pedir</button><button data-v="granted" aria-pressed="false">Ativadas</button><button data-v="denied" aria-pressed="false">Bloqueadas</button></span>
-  <button id="pv-nag">Simular cobrança</button>
+  <button id="pv-alarm">Disparar alarme</button>
+  <button id="pv-nag">Simular atraso</button>
   <button id="pv-reset">Restaurar exemplo</button>
 </div>
 """
 
 html = f"""<title>Prévia do app Tarefas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500&family=Figtree:wght@400;500;600&display=swap">
 <style>
 {(APP / "style.css").read_text()}
 {CHROME_CSS}

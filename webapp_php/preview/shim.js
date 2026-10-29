@@ -11,9 +11,10 @@
     return Math.floor(d / 1000);
   };
 
+  const T = (o) => ({ status: 'scheduled', nag_count: 0, done_at: null, mode: 'push', desc_type: 'text', notes: '', checklist: [], base_at: o.due_at, ...o });
   function seed() {
     return {
-      nextId: 10,
+      nextId: 20,
       user: { id: 1, name: 'Turko', email: 'turko@farmaciabotanique.com.br', is_admin: true },
       users: [
         { id: 1, name: 'Turko', email: 'turko@farmaciabotanique.com.br', is_admin: true },
@@ -21,22 +22,26 @@
         { id: 3, name: 'Bruno', email: 'bruno@farmaciabotanique.com.br', is_admin: false },
       ],
       tasks: [
-        { id: 1, text: 'Ligar para o contador sobre o DAS', due_at: now() - 12 * 60, status: 'nagging', nag_count: 2, done_at: null },
-        { id: 2, text: 'Pagar boleto da distribuidora', due_at: now() + 3 * 3600, status: 'scheduled', nag_count: 0, done_at: null },
-        { id: 3, text: 'Revisar criativos da campanha de Black Friday', due_at: at(1, 10), status: 'scheduled', nag_count: 0, done_at: null },
-        { id: 4, text: 'Renovar alvará sanitário', due_at: at(5, 9), status: 'scheduled', nag_count: 0, done_at: null },
-        { id: 5, text: 'Enviar relatório de mídia paga', due_at: now() - 3 * 3600, status: 'done', nag_count: 1, done_at: now() - 2 * 3600 },
-        { id: 6, text: 'Aprovar copy do anúncio de vitaminas', due_at: at(-1, 15), status: 'done', nag_count: 0, done_at: at(-1, 15, 20) },
+        T({ id: 1, title: 'Ligar para o contador sobre o DAS', due_at: now() - 12 * 60, status: 'nagging', nag_count: 2, notes: 'Perguntar sobre o parcelamento de setembro.' }),
+        T({ id: 2, title: 'Pagar boleto da distribuidora', due_at: now() + 3 * 3600, mode: 'alarm', notes: 'Vence hoje. Código de barras no e-mail do financeiro.' }),
+        T({ id: 3, title: 'Revisar criativos da Black Friday', due_at: at(1, 10), desc_type: 'checklist',
+          checklist: [{ t: 'Conferir copy dos 3 anúncios', done: true }, { t: 'Ajustar oferta no vídeo 2', done: false }, { t: 'Aprovar com a agência', done: false }] }),
+        T({ id: 4, title: 'Tomar vitamina D', due_at: at(1, 8), mode: 'alarm' }),
+        T({ id: 5, title: 'Renovar alvará sanitário', due_at: at(5, 9), notes: 'Levar CNPJ, contrato social e o último laudo.' }),
+        T({ id: 6, title: 'Fechar pedido do laboratório', due_at: at(8, 14), desc_type: 'checklist',
+          checklist: [{ t: 'Conferir estoque de cápsulas', done: false }, { t: 'Pedir orçamento', done: false }] }),
+        T({ id: 7, title: 'Enviar relatório de mídia paga', due_at: now() - 3 * 3600, status: 'done', done_at: now() - 2 * 3600, notes: 'ROAS da semana e criativo vencedor.' }),
+        T({ id: 8, title: 'Aprovar copy do anúncio de vitaminas', due_at: at(-1, 15), status: 'done', done_at: at(-1, 15, 20) }),
       ],
     };
   }
   let db = seed();
-  window.__preview = { reset() { db = seed(); }, db: () => db };
+  window.__preview = { reset() { db = seed(); }, db: () => db, T, nextId: () => db.nextId++ };
 
   // ---- a tiny stand-in for the AI date parser ----
   const WD = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
   function fakeParse(text) {
-    let t = text.toLowerCase();
+    const t = text.toLowerCase();
     let due = null;
     const rel = t.match(/daqui (?:a )?(\d+)\s*(min|minutos?|h|horas?)/);
     if (rel) due = now() + Number(rel[1]) * (rel[2].startsWith('h') ? 3600 : 60);
@@ -61,27 +66,18 @@
       .replace(/(às|as)\s*\d{1,2}([:h]\d{2})?h?|\d{1,2}h(\d{2})?/gi, '')
       .replace(/\s+/g, ' ').trim();
     task = task ? task[0].toUpperCase() + task.slice(1) : null;
-    return { task, due };
+    return { title: task, due_at: due };
   }
 
   // ---- fake api.php ----
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const find = (id) => db.tasks.find((t) => t.id === Number(id));
-
-  function createFrom(text) {
-    const p = fakeParse(text);
-    if (!p.task) return json({ error: 'Não entendi como lembrete. Ex: "ligar pro João amanhã às 14h".' }, 422);
-    if (!p.due) return json({ need_date: true, text: p.task });
-    const t = { id: db.nextId++, text: p.task, due_at: p.due, status: 'scheduled', nag_count: 0, done_at: null };
-    db.tasks.push(t);
-    return json({ task: t });
-  }
+  const tomorrowSame = (t) => { const b = new Date((t.base_at || t.due_at) * 1000); const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(b.getHours(), b.getMinutes(), 0, 0); return Math.floor(d / 1000); };
 
   async function route(action, init) {
-    await new Promise((r) => setTimeout(r, 250));  // feel of a network round trip
+    await new Promise((r) => setTimeout(r, 200));  // feel of a network round trip
     let body = {};
     if (init?.body && typeof init.body === 'string') body = JSON.parse(init.body);
-    const open = db.tasks.filter((t) => t.status === 'scheduled' || t.status === 'nagging').sort((a, b) => a.due_at - b.due_at);
     switch (action) {
       case 'login':
         if (!body.password) return json({ error: 'E-mail ou senha incorretos.' }, 401);
@@ -89,19 +85,30 @@
       case 'me': return window.__previewLoggedOut ? json({ error: 'Faça login.' }, 401) : json({ user: db.user, vapid: 'BPreview' });
       case 'logout': return json({ ok: true });
       case 'tasks':
-        return json({ open, done: db.tasks.filter((t) => t.status === 'done').sort((a, b) => b.done_at - a.done_at), now: now() });
-      case 'create': return createFrom(body.text || '');
-      case 'audio': {
-        const r = await createFrom('ligar pro fornecedor amanhã às 10h').json();
-        return json({ transcript: 'ligar pro fornecedor amanhã às 10h', ...r });
+        return json({
+          open: db.tasks.filter((t) => t.status === 'scheduled' || t.status === 'nagging').sort((a, b) => a.due_at - b.due_at),
+          done: db.tasks.filter((t) => t.status === 'done').sort((a, b) => b.done_at - a.done_at), now: now(),
+        });
+      case 'parse': {
+        const p = fakeParse(body.text || '');
+        return p.title ? json(p) : json({ error: 'Não entendi como tarefa. Ex: "ligar pro João amanhã às 14h".' }, 422);
       }
+      case 'audio': return json({ transcript: 'ligar pro fornecedor amanhã às 10h', ...fakeParse('ligar pro fornecedor amanhã às 10h') });
       case 'save': {
         const due = Math.floor(new Date(body.due) / 1000);
-        if (!body.text?.trim()) return json({ error: 'Descreva a tarefa.' }, 400);
+        if (!body.title?.trim()) return json({ error: 'Dê um título para a tarefa.' }, 400);
         if (!due || due < now() - 60) return json({ error: 'Esse horário já passou. Escolha uma data futura.' }, 400);
+        const fields = { title: body.title.trim(), due_at: due, base_at: due, mode: body.mode === 'alarm' ? 'alarm' : 'push',
+          desc_type: body.desc_type === 'checklist' ? 'checklist' : 'text', notes: (body.notes || '').trim(),
+          checklist: (body.checklist || []).filter((i) => i.t.trim()).map((i) => ({ t: i.t.trim(), done: !!i.done })),
+          status: 'scheduled', nag_count: 0, done_at: null };
         let t = body.id ? find(body.id) : null;
-        if (t) Object.assign(t, { text: body.text.trim(), due_at: due, status: 'scheduled', nag_count: 0, done_at: null });
-        else { t = { id: db.nextId++, text: body.text.trim(), due_at: due, status: 'scheduled', nag_count: 0, done_at: null }; db.tasks.push(t); }
+        if (t) Object.assign(t, fields); else { t = T({ id: db.nextId++, ...fields }); db.tasks.push(t); }
+        return json({ task: t });
+      }
+      case 'check': {
+        const t = find(body.id);
+        t.checklist[body.index].done = !!body.done;
         return json({ task: t });
       }
       case 'act': {
@@ -111,7 +118,7 @@
         if (body.action === 'delete') db.tasks = db.tasks.filter((x) => x !== t);
         if (body.action === 'reopen') Object.assign(t, { status: 'scheduled', done_at: null, nag_count: 0, due_at: Math.max(t.due_at, now() + 300) });
         if (body.action === 'snooze') {
-          t.due_at = body.until === 'tomorrow' ? at(1, 9) : now() + (body.minutes || 30) * 60;
+          if (body.until === 'tomorrow') { t.due_at = tomorrowSame(t); t.base_at = t.due_at; } else t.due_at = now() + (body.minutes || 5) * 60;
           t.status = 'scheduled';
         }
         return json({ task: t });

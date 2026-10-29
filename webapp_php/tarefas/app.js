@@ -2,7 +2,42 @@
 
 const TZ = 'America/Sao_Paulo';
 const $ = (s) => document.querySelector(s);
-const state = { user: null, vapid: null, open: [], done: [], highlight: null, snoozeId: null, editId: null };
+const state = {
+  user: null, vapid: null, open: [], done: [], view: 'list', highlight: null,
+  month: null, selDay: null, editId: null, detailId: null, confirmDelete: false,
+  mode: 'push', descType: 'text', items: [], alarm: null, silenced: {},
+};
+
+// ---------- icons (inline SVG, stroke = currentColor) ----------
+
+const ICONS = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+  calendar: '<rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
+  bell: '<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>',
+  alarm: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M5 3L2 6M19 3l3 3"/>',
+  x: '<path d="M18 6L6 18M6 6l12 12"/>',
+  mic: '<rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3.5"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  undo: '<path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  left: '<path d="M15 18l-6-6 6-6"/>',
+  right: '<path d="M9 18l6-6-6-6"/>',
+  volume: '<path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/>',
+  moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
+  checklist: '<path d="M10 6h11M10 12h11M10 18h11M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/>',
+};
+const icon = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
+function paintIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach((el) => {
+    if (!el.dataset.painted) { el.insertAdjacentHTML('afterbegin', icon(el.dataset.icon)); el.dataset.painted = '1'; }
+  });
+}
 
 // ---------- helpers ----------
 
@@ -23,7 +58,7 @@ async function api(action, data, opts = {}) {
 }
 
 let toastTimer;
-function toast(msg, ms = 3500) {
+function toast(msg, ms = 3200) {
   const t = $('#toast');
   t.textContent = msg;
   t.classList.add('show');
@@ -31,40 +66,54 @@ function toast(msg, ms = 3500) {
   toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const nowS = () => Math.floor(Date.now() / 1000);
+const pref = {
+  get(k) { try { return localStorage.getItem('tarefas.' + k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem('tarefas.' + k, v); } catch { /* private mode */ } },
+};
 
 function parts(ts) {
   const p = {};
   new Intl.DateTimeFormat('pt-BR', {
     timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23',
   }).formatToParts(new Date(ts * 1000)).forEach((x) => { p[x.type] = x.value; });
+  p.weekday = p.weekday.replace('.', '');
   return p;
 }
-
-function dayKey(ts) { const p = parts(ts); return `${p.year}${p.month}${p.day}`; }
-
-function fmtWhen(ts) {
-  const p = parts(ts);
-  const now = Date.now() / 1000;
-  const time = `${p.hour}:${p.minute}`;
-  if (dayKey(ts) === dayKey(now)) return `hoje às ${time}`;
-  if (dayKey(ts) === dayKey(now + 86400)) return `amanhã às ${time}`;
-  if (dayKey(ts) === dayKey(now - 86400)) return `ontem às ${time}`;
-  return `${p.weekday.replace('.', '')} ${p.day}/${p.month} às ${time}`;
+const dayKey = (ts) => { const p = parts(ts); return `${p.year}-${p.month}-${p.day}`; };
+const fmtTime = (ts) => { const p = parts(ts); return `${p.hour}:${p.minute}`; };
+const fmtShort = (ts) => { const p = parts(ts); return `${p.weekday} ${p.day}/${p.month}`; };
+const keyToDate = (k) => new Date(k + 'T12:00:00Z');
+function fmtLong(key) {
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(keyToDate(key));
 }
-
-function fmtLate(ts) {
-  const min = Math.max(0, Math.floor((Date.now() / 1000 - ts) / 60));
+function shiftKey(k, days) { const d = keyToDate(k); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
+function relDay(k) {
+  const today = dayKey(nowS());
+  if (k === today) return 'hoje';
+  if (k === shiftKey(today, 1)) return 'amanhã';
+  if (k === shiftKey(today, -1)) return 'ontem';
+  return null;
+}
+function lateText(ts) {
+  const min = Math.max(0, Math.floor((nowS() - ts) / 60));
   if (min < 60) return `${min} min de atraso`;
   const h = Math.floor(min / 60);
-  return h < 48 ? `${h}h de atraso` : `${Math.floor(h / 24)} dias de atraso`;
+  return h < 48 ? `${h} h de atraso` : `${Math.floor(h / 24)} dias de atraso`;
 }
 
-function toInput(ts) {
-  const p = parts(ts);
-  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+/** "Tomorrow, same time" label for snooze buttons (mirrors tomorrow_same_time on the server). */
+const tomorrowLabel = (t) => fmtTime(t.base_at || t.due_at);
+
+function descPreview(t) {
+  if (t.desc_type === 'checklist' && t.checklist.length) {
+    const done = t.checklist.filter((i) => i.done).length;
+    const next = t.checklist.find((i) => !i.done);
+    return { text: next ? next.t : 'Tudo marcado', pill: `${done}/${t.checklist.length}`, full: done === t.checklist.length };
+  }
+  const line = (t.notes || '').split('\n').map((s) => s.trim()).find(Boolean) || '';
+  return { text: line };
 }
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -83,14 +132,14 @@ async function showApp() {
   $('#app').hidden = false;
   await loadTasks();
   refreshNotifications();
+  applyWakeLock();
 }
 
 $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const f = new FormData(e.target);
   $('#login-error').textContent = '';
   try {
-    await api('login', { email: f.get('email'), password: f.get('password') });
+    await api('login', { email: $('#login-email').value, password: $('#login-password').value });
     const me = await api('me');
     Object.assign(state, { user: me.user, vapid: me.vapid });
     e.target.reset();
@@ -100,7 +149,7 @@ $('#login-form').addEventListener('submit', async (e) => {
   }
 });
 
-// ---------- tasks ----------
+// ---------- data ----------
 
 async function loadTasks() {
   try {
@@ -108,207 +157,573 @@ async function loadTasks() {
     state.open = r.open;
     state.done = r.done;
     render();
+    checkAlarms();
   } catch (err) {
     if (state.user) toast(err.message);
   }
 }
 
-function taskCard(t) {
-  const nag = t.status === 'nagging';
-  const meta = nag ? `🔔 ${fmtLate(t.due_at)} · cobrança a cada 5 min` : `🕒 ${fmtWhen(t.due_at)}`;
-  return `<article class="task ${nag ? 'nagging' : ''} ${state.highlight === t.id ? 'highlight' : ''}" data-id="${t.id}">
-    <div class="task-text">${esc(t.text)}</div>
-    <div class="task-meta">${meta}</div>
-    <div class="task-actions">
-      <button class="done-btn" data-act="done">✅ Feito</button>
-      <button data-act="snooze">⏰ Adiar</button>
-      <span class="spacer"></span>
-      <button data-act="edit" aria-label="Editar">✏️</button>
-    </div>
-  </article>`;
+const allTasks = () => [...state.open, ...state.done];
+const findTask = (id) => allTasks().find((t) => t.id === id);
+
+function replaceTask(t) {
+  state.open = state.open.filter((x) => x.id !== t.id);
+  state.done = state.done.filter((x) => x.id !== t.id);
+  (t.status === 'done' ? state.done : state.open).push(t);
+  state.open.sort((a, b) => a.due_at - b.due_at);
+}
+
+// ---------- rendering ----------
+
+function taskRow(t) {
+  const late = t.status !== 'done' && t.due_at <= nowS();
+  const d = descPreview(t);
+  const when = t.status === 'done' ? fmtShort(t.done_at) : fmtShort(t.due_at);
+  return `<button class="task ${late ? 'late' : ''} ${t.status === 'done' ? 'done' : ''} ${state.highlight === t.id ? 'highlight' : ''}" data-id="${t.id}">
+    <div class="t-time"><b>${fmtTime(t.status === 'done' ? t.done_at : t.due_at)}</b><small>${late ? 'atrasada' : when}</small></div>
+    <div class="t-main"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(d.text)}</div></div>
+    <div class="t-meta">${d.pill ? `<span class="pill ${d.full ? 'full' : ''}">${icon('checklist')}${d.pill}</span>` : ''}${t.mode === 'alarm' ? icon('alarm', 'alarm-ic') : icon('bell')}</div>
+  </button>`;
+}
+
+function renderHeader() {
+  const today = dayKey(nowS());
+  $('#today-title').textContent = fmtLong(today);
+  const late = state.open.filter((t) => t.due_at <= nowS()).length;
+  const n = state.open.length;
+  $('#today-sub').textContent = n
+    ? `${n} ${n === 1 ? 'tarefa ativa' : 'tarefas ativas'}${late ? ` · ${late} ${late === 1 ? 'atrasada' : 'atrasadas'}` : ''}`
+    : 'Nenhuma tarefa ativa';
+  document.querySelectorAll('.seg [data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
+  $('#view-list').hidden = state.view !== 'list';
+  $('#view-days').hidden = state.view !== 'days';
+}
+
+function renderList() {
+  const now = nowS();
+  const today = dayKey(now);
+  const tomorrow = shiftKey(today, 1);
+  const groups = [
+    ['late', 'Atrasadas', state.open.filter((t) => t.due_at <= now)],
+    ['', 'Hoje', state.open.filter((t) => t.due_at > now && dayKey(t.due_at) === today)],
+    ['', 'Amanhã', state.open.filter((t) => dayKey(t.due_at) === tomorrow)],
+    ['', 'Próximos dias', state.open.filter((t) => dayKey(t.due_at) > tomorrow)],
+  ];
+  let html = '';
+  if (!state.open.length) {
+    html += `<div class="empty"><h2>Tudo em dia</h2><p>Nenhuma tarefa ativa. Crie uma e escolha se ela avisa com notificação ou toca como alarme.</p>
+      <button class="btn" data-new>${icon('plus')}Nova tarefa</button></div>`;
+  }
+  groups.forEach(([cls, name, list]) => {
+    if (list.length) html += `<section class="group ${cls}"><h3>${name}<span>${list.length}</span></h3><div class="cards">${list.map(taskRow).join('')}</div></section>`;
+  });
+  const recent = state.done.filter((t) => t.done_at > now - 7 * 86400);
+  if (recent.length) {
+    html += `<details class="group done-group"><summary><h3><span class="chev">›</span> Concluídas nos últimos 7 dias · ${recent.length}</h3></summary>
+      <div class="cards">${recent.map(taskRow).join('')}</div></details>`;
+  }
+  $('#view-list').innerHTML = html;
+}
+
+function renderDays() {
+  const today = dayKey(nowS());
+  if (!state.month) state.month = today.slice(0, 7);
+  if (!state.selDay) state.selDay = today;
+  const [y, m] = state.month.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1));
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const byDay = {};
+  allTasks().forEach((t) => {
+    (byDay[dayKey(t.due_at)] ||= []).push(t);
+  });
+  const now = nowS();
+  let cells = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d) => `<div class="cal-wd" aria-hidden="true">${d}</div>`).join('');
+  for (let i = 0; i < first.getUTCDay(); i++) cells += '<span class="day out"></span>';
+  for (let d = 1; d <= daysIn; d++) {
+    const k = `${state.month}-${String(d).padStart(2, '0')}`;
+    const list = byDay[k] || [];
+    const dots = list.slice(0, 3).map((t) => `<i class="${t.status === 'done' ? 'done' : t.due_at <= now ? 'late' : ''}"></i>`).join('');
+    const label = `${fmtLong(k)}: ${list.length ? list.length + (list.length === 1 ? ' tarefa' : ' tarefas') : 'sem tarefas'}`;
+    cells += `<button class="day ${list.length ? 'has' : ''} ${k === today ? 'today' : ''}" data-day="${k}" aria-pressed="${k === state.selDay}" aria-label="${label}">${d}<span class="dots">${dots}</span></button>`;
+  }
+  const monthName = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(first);
+  const sel = (byDay[state.selDay] || []).sort((a, b) => (a.status === 'done') - (b.status === 'done') || a.due_at - b.due_at);
+  const rel = relDay(state.selDay);
+  $('#view-days').innerHTML = `
+    <section class="cal">
+      <div class="cal-head">
+        <button class="icon" data-month="-1" aria-label="Mês anterior">${icon('left')}</button>
+        <h2>${monthName}</h2>
+        <button class="icon" data-month="1" aria-label="Próximo mês">${icon('right')}</button>
+      </div>
+      <div class="cal-grid">${cells}</div>
+      <div class="cal-legend"><span><i></i>ativa</span><span><i class="late"></i>atrasada</span><span><i class="done"></i>concluída</span></div>
+    </section>
+    <div class="day-title"><div><h2>${rel || fmtLong(state.selDay)}</h2>${rel ? `<p class="muted small">${fmtLong(state.selDay)}</p>` : ''}</div>
+      <span class="muted small">${sel.length || 'sem'} ${sel.length === 1 ? 'tarefa' : 'tarefas'}</span></div>
+    ${sel.length
+      ? `<div class="cards">${sel.map(taskRow).join('')}</div>`
+      : `<div class="empty"><p>Nenhuma tarefa neste dia.</p><button class="btn ghost" data-new-day="${state.selDay}">${icon('plus')}Criar tarefa neste dia</button></div>`}`;
 }
 
 function render() {
-  const nagging = state.open.filter((t) => t.status === 'nagging');
-  const upcoming = state.open.filter((t) => t.status !== 'nagging');
-  let html = '';
-  if (!state.open.length) {
-    html += `<div class="empty"><b>🎉</b>Nada pendente.<br>Escreva ou grave abaixo o que você precisa lembrar.</div>`;
+  renderHeader();
+  if (state.view === 'list') renderList(); else renderDays();
+  if (state.highlight) {
+    document.querySelector(`.task[data-id="${state.highlight}"]`)?.scrollIntoView({ block: 'center' });
+    setTimeout(() => { state.highlight = null; }, 2500);
   }
-  if (nagging.length) html += `<h3 class="section-title">Cobrando agora</h3>` + nagging.map(taskCard).join('');
-  if (upcoming.length) html += `<h3 class="section-title">Próximas</h3>` + upcoming.map(taskCard).join('');
-  if (state.done.length) {
-    html += `<details><summary><h3 class="section-title">Concluídas (${state.done.length}) ▾</h3></summary>`
-      + state.done.map((t) => `<article class="task done" data-id="${t.id}">
-          <div class="task-text">${esc(t.text)}</div>
-          <div class="task-meta">✅ ${fmtWhen(t.done_at)}</div>
-          <div class="task-actions"><button data-act="reopen">↩️ Reabrir</button><span class="spacer"></span><button data-act="delete">🗑️</button></div>
-        </article>`).join('')
-      + `</details>`;
-  }
-  $('#list').innerHTML = html;
-  if (state.highlight) document.querySelector(`.task[data-id="${state.highlight}"]`)?.scrollIntoView({ block: 'center' });
+  if ($('#detail').open && state.detailId) renderDetail();
 }
 
-async function act(id, action, extra = {}) {
+// ---------- navigation ----------
+
+document.querySelector('.seg').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-view]');
+  if (!b) return;
+  state.view = b.dataset.view;
+  pref.set('view', state.view);
+  render();
+});
+
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('.task[data-id]');
+  if (row) { openDetail(Number(row.dataset.id)); return; }
+  if (e.target.closest('[data-new]')) { openEditor(); return; }
+  const nd = e.target.closest('[data-new-day]');
+  if (nd) { openEditor(null, { day: nd.dataset.newDay }); return; }
+  const day = e.target.closest('[data-day]');
+  if (day) { state.selDay = day.dataset.day; renderDays(); return; }
+  const mon = e.target.closest('[data-month]');
+  if (mon) {
+    const [y, m] = state.month.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + Number(mon.dataset.month), 1));
+    state.month = d.toISOString().slice(0, 7);
+    renderDays();
+    return;
+  }
+  const close = e.target.closest('[data-close]');
+  if (close) close.closest('dialog').close();
+});
+
+$('#add-btn').addEventListener('click', () => openEditor());
+
+// ---------- detail ----------
+
+function openDetail(id) {
+  state.detailId = id;
+  state.confirmDelete = false;
+  renderDetail();
+  if (!$('#detail').open) $('#detail').showModal();
+}
+
+function renderDetail() {
+  const t = findTask(state.detailId);
+  if (!t) { $('#detail').close(); return; }
+  const done = t.status === 'done';
+  const late = !done && t.due_at <= nowS();
+  const k = dayKey(t.due_at);
+  const rel = relDay(k);
+  let desc = '';
+  if (t.desc_type === 'checklist' && t.checklist.length) {
+    const n = t.checklist.filter((i) => i.done).length;
+    desc = `<div class="progress"><span>${n} de ${t.checklist.length}</span><div class="bar"><span style="width:${(n / t.checklist.length) * 100}%"></span></div></div>
+      <ul class="checks">${t.checklist.map((it, i) => `<li><label><input type="checkbox" data-check="${i}" ${it.done ? 'checked' : ''} ${done ? 'disabled' : ''}><span>${esc(it.t)}</span></label></li>`).join('')}</ul>`;
+  } else if (t.notes) {
+    desc = `<div class="d-notes">${linkify(esc(t.notes))}</div>`;
+  }
+  const actions = done
+    ? `<div class="d-row"><button class="btn ghost" data-d="reopen">${icon('undo')}Reabrir</button>
+        <button class="btn ghost danger" data-d="delete">${icon('trash')}${state.confirmDelete ? 'Confirmar exclusão' : 'Excluir'}</button></div>`
+    : `<button class="btn wide" data-d="done">${icon('check')}Concluir tarefa</button>
+      <p class="fld" style="margin:4px 0 -4px">Adiar</p>
+      <div class="d-snooze">
+        <button data-d="s5">+5 min</button><button data-d="s30">+30 min</button>
+        <button data-d="tomorrow">Amanhã<small>às ${tomorrowLabel(t)}</small></button>
+      </div>
+      <div class="d-row"><button class="btn ghost" data-d="edit">${icon('edit')}Editar</button>
+        <button class="btn ghost danger" data-d="delete">${icon('trash')}${state.confirmDelete ? 'Confirmar exclusão' : 'Excluir'}</button></div>`;
+  $('#detail').innerHTML = `<div class="inner">
+    <div class="sheet-head">
+      <span class="d-mode ${t.mode === 'alarm' ? 'alarm' : ''}">${icon(t.mode === 'alarm' ? 'alarm' : 'bell')}${t.mode === 'alarm' ? 'Alarme' : 'Notificação'}</span>
+      <span style="flex:1"></span>
+      <button class="icon" data-close aria-label="Fechar">${icon('x')}</button>
+    </div>
+    <h2 class="d-title">${esc(t.title)}</h2>
+    <p class="d-when">${icon('clock')}${rel ? rel + ', ' : ''}${fmtLong(k)} · ${fmtTime(t.due_at)}
+      ${done ? `<span class="ok">· concluída ${fmtShort(t.done_at)} ${fmtTime(t.done_at)}</span>` : late ? `<span class="late">· ${lateText(t.due_at)}</span>` : ''}</p>
+    ${desc}
+    ${actions}
+  </div>`;
+}
+
+function linkify(html) {
+  return html.replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+}
+
+$('#detail').addEventListener('change', async (e) => {
+  const cb = e.target.closest('[data-check]');
+  if (!cb) return;
+  const t = findTask(state.detailId);
+  t.checklist[Number(cb.dataset.check)].done = cb.checked;  // optimistic
+  renderDetail();
+  try {
+    const r = await api('check', { id: t.id, index: Number(cb.dataset.check), done: cb.checked });
+    replaceTask(r.task);
+    render();
+  } catch (err) {
+    toast(err.message);
+    loadTasks();
+  }
+});
+
+$('#detail').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-d]');
+  if (!b) return;
+  const t = findTask(state.detailId);
+  const a = b.dataset.d;
+  if (a === 'edit') { $('#detail').close(); openEditor(t); return; }
+  if (a === 'delete' && !state.confirmDelete) { state.confirmDelete = true; renderDetail(); return; }
+  const map = {
+    done: ['done', {}, 'Tarefa concluída'], reopen: ['reopen', {}, 'Tarefa reaberta'], delete: ['delete', {}, 'Tarefa excluída'],
+    s5: ['snooze', { minutes: 5 }, 'Adiada 5 min'], s30: ['snooze', { minutes: 30 }, 'Adiada 30 min'],
+    tomorrow: ['snooze', { until: 'tomorrow' }, `Adiada para amanhã às ${tomorrowLabel(t)}`],
+  };
+  const [action, extra, msg] = map[a];
+  $('#detail').close();
+  await act(t.id, action, extra, msg);
+});
+
+async function act(id, action, extra, msg) {
   try {
     await api('act', { id, action, ...extra });
     closeNotifications(id);
-    const msgs = { done: '✅ Feito!', delete: '🗑️ Excluída', reopen: '↩️ Reaberta (lembro em 5 min)', snooze: '⏰ Adiada' };
-    toast(msgs[action] || 'Ok');
-    loadTasks();
+    toast(msg);
+    await loadTasks();
+    return true;
   } catch (err) {
     toast(err.message);
+    return false;
   }
 }
 
-$('#list').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-act]');
-  if (!btn) return;
-  const id = Number(btn.closest('.task').dataset.id);
-  const a = btn.dataset.act;
-  if (a === 'done' || a === 'reopen') act(id, a);
-  else if (a === 'delete') { if (confirm('Excluir esta tarefa?')) act(id, 'delete'); }
-  else if (a === 'snooze') { state.snoozeId = id; $('#snooze').showModal(); }
-  else if (a === 'edit') openEditor(state.open.find((t) => t.id === id));
-});
-
-$('#snooze').addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  $('#snooze').close();
-  if (b.dataset.min) act(state.snoozeId, 'snooze', { minutes: Number(b.dataset.min) });
-  else if (b.dataset.until) act(state.snoozeId, 'snooze', { until: b.dataset.until });
-});
-
 // ---------- editor ----------
 
-function openEditor(task, preset = {}) {
-  const f = $('#editor-form');
+const pad = (n) => String(n).padStart(2, '0');
+
+function setDue(ts) {
+  const p = parts(ts);
+  $('#f-date').value = `${p.year}-${p.month}-${p.day}`;
+  $('#f-time').value = `${p.hour}:${p.minute}`;
+}
+
+function openEditor(task = null, preset = {}) {
   state.editId = task ? task.id : null;
   $('#editor-title').textContent = task ? 'Editar tarefa' : 'Nova tarefa';
-  $('#editor-delete').hidden = !task;
-  $('#editor-error').textContent = preset.error || '';
-  f.text.value = task ? task.text : preset.text || '';
-  const due = task ? task.due_at : Math.ceil((Date.now() / 1000 + 3600) / 900) * 900;
-  f.due.value = toInput(due);
+  $('#editor-error').textContent = '';
+  $('#f-title').value = task ? task.title : '';
+  $('#f-notes').value = task ? task.notes : '';
+  state.items = task ? task.checklist.map((i) => ({ ...i })) : [];
+  setMode(task ? task.mode : pref.get('lastMode') || 'push');
+  setDescType(task ? task.desc_type : 'text', false);
+  if (task) setDue(task.due_at);
+  else {
+    setDue(Math.ceil((nowS() + 3600) / 1800) * 1800);
+    if (preset.day) $('#f-date').value = preset.day;
+  }
   $('#editor').showModal();
-  if (preset.focusDate) f.due.focus();
+  if (!task) setTimeout(() => $('#f-title').focus(), 50);
 }
+
+function setMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll('#f-mode [data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+}
+
+function setDescType(type, convert = true) {
+  if (convert && type !== state.descType) {
+    if (type === 'checklist') {
+      const lines = $('#f-notes').value.split('\n').map((s) => s.replace(/^[-*•]\s*/, '').trim()).filter(Boolean);
+      if (lines.length && !state.items.length) state.items = lines.map((t) => ({ t, done: false }));
+    } else if (!$('#f-notes').value.trim() && state.items.length) {
+      $('#f-notes').value = state.items.map((i) => '- ' + i.t).join('\n');
+    }
+  }
+  state.descType = type;
+  document.querySelectorAll('#f-desc-type [data-dt]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.dt === type)));
+  $('#f-notes').hidden = type !== 'text';
+  $('#f-checklist').hidden = type !== 'checklist';
+  if (type === 'checklist') {
+    if (!state.items.length) state.items = [{ t: '', done: false }];
+    renderItems();
+  }
+}
+
+function renderItems(focus = null) {
+  $('#f-items').innerHTML = state.items.map((it, i) => `<li>
+      <input type="checkbox" data-idone="${i}" ${it.done ? 'checked' : ''} aria-label="Marcado">
+      <input type="text" id="f-item-${i}" data-item="${i}" value="${esc(it.t)}" placeholder="Item ${i + 1}" maxlength="300">
+      <button type="button" class="icon" data-irm="${i}" aria-label="Remover item">${icon('x')}</button>
+    </li>`).join('');
+  if (focus !== null) $(`#f-item-${focus}`)?.focus();
+}
+
+$('#f-mode').addEventListener('click', (e) => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); });
+$('#f-desc-type').addEventListener('click', (e) => { const b = e.target.closest('[data-dt]'); if (b) setDescType(b.dataset.dt); });
+$('#f-add-item').addEventListener('click', () => { state.items.push({ t: '', done: false }); renderItems(state.items.length - 1); });
+$('#f-items').addEventListener('input', (e) => { const i = e.target.dataset.item; if (i !== undefined) state.items[i].t = e.target.value; });
+$('#f-items').addEventListener('change', (e) => { const i = e.target.dataset.idone; if (i !== undefined) state.items[i].done = e.target.checked; });
+$('#f-items').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-irm]');
+  if (!b) return;
+  state.items.splice(Number(b.dataset.irm), 1);
+  if (!state.items.length) state.items.push({ t: '', done: false });
+  renderItems(Math.max(0, Number(b.dataset.irm) - 1));
+});
+$('#f-items').addEventListener('keydown', (e) => {
+  const i = e.target.dataset.item;
+  if (i === undefined) return;
+  const n = Number(i);
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    state.items.splice(n + 1, 0, { t: '', done: false });
+    renderItems(n + 1);
+  } else if (e.key === 'Backspace' && e.target.value === '' && state.items.length > 1) {
+    e.preventDefault();
+    state.items.splice(n, 1);
+    renderItems(Math.max(0, n - 1));
+  }
+});
+
+$('#f-quick').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-q]');
+  if (!b) return;
+  const today = dayKey(nowS());
+  if (b.dataset.q === 'today') $('#f-date').value = today;
+  if (b.dataset.q === 'tomorrow') $('#f-date').value = shiftKey(today, 1);
+  if (b.dataset.q === '1h') setDue(Math.ceil((nowS() + 3600) / 300) * 300);
+  if (b.dataset.q === 'monday') {
+    const wd = keyToDate(today).getUTCDay();
+    $('#f-date').value = shiftKey(today, ((8 - wd) % 7) || 7);
+  }
+});
 
 $('#editor-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const f = e.target;
+  const title = $('#f-title').value.trim();
+  const date = $('#f-date').value;
+  const time = $('#f-time').value;
+  if (!title) { $('#editor-error').textContent = 'Dê um título para a tarefa.'; $('#f-title').focus(); return; }
+  if (!date || !time) { $('#editor-error').textContent = 'Escolha data e hora.'; return; }
   try {
-    const r = await api('save', { id: state.editId, text: f.text.value, due: f.due.value });
+    const r = await api('save', {
+      id: state.editId, title, due: `${date}T${time}`, mode: state.mode, desc_type: state.descType,
+      notes: $('#f-notes').value, checklist: state.items.filter((i) => i.t.trim()),
+    });
+    pref.set('lastMode', state.mode);
     $('#editor').close();
-    toast(`📌 ${r.task.text} — ${fmtWhen(r.task.due_at)}`);
+    toast(`${r.task.mode === 'alarm' ? 'Alarme' : 'Lembrete'} para ${relDay(dayKey(r.task.due_at)) || fmtShort(r.task.due_at)} às ${fmtTime(r.task.due_at)}`);
+    state.highlight = r.task.id;
     loadTasks();
   } catch (err) {
     $('#editor-error').textContent = err.message;
   }
 });
-$('#editor-cancel').addEventListener('click', () => $('#editor').close());
-$('#editor-delete').addEventListener('click', () => {
-  if (!confirm('Excluir esta tarefa?')) return;
-  $('#editor').close();
-  act(state.editId, 'delete');
-});
-$('#manual-btn').addEventListener('click', () => openEditor(null, { text: $('#composer-text').value.trim() }));
 
-// ---------- composer: text and voice ----------
-
-const textEl = $('#composer-text');
-
-function syncComposer() {
-  textEl.style.height = 'auto';
-  textEl.style.height = Math.min(textEl.scrollHeight, 120) + 'px';
-  const has = textEl.value.trim() !== '';
-  $('#send-btn').hidden = !has;
-  $('#mic-btn').hidden = has;
-}
-textEl.addEventListener('input', syncComposer);
-textEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey && !isIOS) { e.preventDefault(); $('#composer').requestSubmit(); }
-});
-
-function handleCreated(r) {
-  if (r.task) {
-    toast(`📌 ${r.task.text} — ${fmtWhen(r.task.due_at)}`, 5000);
-    state.highlight = r.task.id;
-    loadTasks();
-  } else if (r.need_date) {
-    openEditor(null, { text: r.text, error: r.error || 'Quando devo te lembrar?', focusDate: true });
-  }
+/** Fills title, date and time from free text such as "pagar boleto sexta 10h". */
+function applyParsed(r) {
+  $('#f-title').value = r.title;
+  if (r.due_at) { setDue(r.due_at); $('#editor-error').textContent = ''; }
+  else $('#editor-error').textContent = 'Não achei data ou hora no texto. Escolha abaixo.';
 }
 
-async function busy(fn) {
-  $('#composer').classList.add('busy');
-  try { await fn(); } catch (err) { toast(err.message, 5000); } finally { $('#composer').classList.remove('busy'); }
-}
-
-$('#composer').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const text = textEl.value.trim();
-  if (!text) return;
-  busy(async () => {
-    const r = await api('create', { text });
-    textEl.value = '';
-    syncComposer();
-    handleCreated(r);
-  });
+$('#f-magic').addEventListener('click', async () => {
+  const text = $('#f-title').value.trim();
+  if (!text) { toast('Escreva a tarefa primeiro, ex: "pagar boleto sexta 10h".'); return; }
+  const b = $('#f-magic');
+  b.disabled = true;
+  try { applyParsed(await api('parse', { text })); } catch (err) { $('#editor-error').textContent = err.message; }
+  b.disabled = false;
 });
 
 let recorder = null;
-let recTimer = null;
-
-$('#mic-btn').addEventListener('click', async () => {
+$('#f-mic').addEventListener('click', async () => {
+  const btn = $('#f-mic');
   if (recorder) { recorder.stop(); return; }
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    toast('Este navegador não grava áudio. Use o ditado do teclado.');
-    return;
-  }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { toast('Este navegador não grava áudio. Use o ditado do teclado.'); return; }
   let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
-    toast('Permita o acesso ao microfone para gravar.');
-    return;
-  }
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { toast('Permita o acesso ao microfone para gravar.'); return; }
   const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t)) || '';
   recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
   const chunks = [];
   recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-  recorder.onstop = () => {
+  const stopTimer = setTimeout(() => recorder?.stop(), 60000);
+  recorder.onstop = async () => {
+    clearTimeout(stopTimer);
     stream.getTracks().forEach((t) => t.stop());
-    clearTimeout(recTimer);
-    $('#mic-btn').classList.remove('recording');
-    $('#mic-btn').textContent = '🎙️';
+    btn.classList.remove('recording');
+    btn.innerHTML = icon('mic');
     const mime = recorder.mimeType || type;
     recorder = null;
     const blob = new Blob(chunks, { type: mime });
     if (blob.size < 1000) { toast('Áudio muito curto.'); return; }
     const fd = new FormData();
     fd.append('audio', blob, mime.includes('mp4') ? 'audio.m4a' : 'audio.webm');
-    busy(async () => {
-      toast('🎙️ Transcrevendo…', 10000);
+    btn.disabled = true;
+    toast('Transcrevendo…', 8000);
+    try {
       const r = await api('audio', fd);
-      toast(`🎙️ "${r.transcript}"`, 4000);
-      handleCreated(r);
-    });
+      applyParsed(r);
+      toast(`"${r.transcript}"`, 4000);
+    } catch (err) {
+      $('#editor-error').textContent = err.message;
+    }
+    btn.disabled = false;
   };
   recorder.start();
-  $('#mic-btn').classList.add('recording');
-  $('#mic-btn').textContent = '⏹';
-  toast('Gravando… toque de novo para enviar.', 2500);
-  recTimer = setTimeout(() => recorder?.stop(), 120000);
+  btn.classList.add('recording');
+  btn.innerHTML = icon('stop');
+  toast('Gravando… toque de novo para parar.', 2500);
 });
 
-// ---------- notifications ----------
+// ---------- alarm: sound, vibration and full-screen ringing ----------
+
+const Sound = {
+  ctx: null,
+  timer: null,
+  unlock() {
+    try {
+      this.ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      const src = this.ctx.createBufferSource();  // a silent blip unlocks audio on iOS
+      src.buffer = this.ctx.createBuffer(1, 1, 22050);
+      src.connect(this.ctx.destination);
+      src.start(0);
+    } catch { /* no Web Audio */ }
+  },
+  ready() { return !!this.ctx && this.ctx.state === 'running'; },
+  beep(t, freq, dur) {
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'square';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.01);
+    g.gain.setValueAtTime(0.22, t + dur - 0.02);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  },
+  pattern() {  // classic digital alarm: four quick beeps, then a pause
+    const t = this.ctx.currentTime + 0.03;
+    for (let i = 0; i < 4; i++) this.beep(t + i * 0.16, 1046, 0.1);
+  },
+  start() {
+    this.stop();
+    const play = () => {
+      if (this.ready()) this.pattern();
+      navigator.vibrate?.([300, 100, 300, 100, 300]);
+    };
+    play();
+    this.timer = setInterval(play, 1300);
+  },
+  stop() {
+    clearInterval(this.timer);
+    this.timer = null;
+    navigator.vibrate?.(0);
+  },
+};
+document.addEventListener('pointerdown', () => { if (!Sound.ready()) Sound.unlock(); }, { passive: true });
+
+/** Rings for any alarm task that is due while the app is open. */
+function checkAlarms() {
+  if (!state.user || state.alarm) return;
+  const t = state.open.find((x) => x.mode === 'alarm' && x.due_at <= nowS() && !state.silenced[`${x.id}:${x.due_at}`]);
+  if (t) openAlarm(t);
+}
+setInterval(checkAlarms, 5000);
+
+function openAlarm(t) {
+  state.alarm = t;
+  ['#detail', '#editor', '#settings'].forEach((s) => $(s).open && $(s).close());
+  $('#toast').classList.remove('show');
+  $('#alarm-time').textContent = fmtTime(t.due_at);
+  $('#alarm-title').textContent = t.title;
+  $('#alarm-desc').textContent = descPreview(t).text;
+  $('#alarm-tomorrow').textContent = `às ${tomorrowLabel(t)}`;
+  $('#alarm').hidden = false;
+  $('#alarm').classList.add('ringing');
+  Sound.unlock();
+  Sound.start();
+  setTimeout(() => { $('#alarm-sound').hidden = Sound.ready(); }, 400);
+}
+
+function closeAlarm() {
+  Sound.stop();
+  $('#alarm').hidden = true;
+  $('#alarm').classList.remove('ringing');
+  state.alarm = null;
+}
+
+$('#alarm-sound').addEventListener('click', () => { Sound.unlock(); Sound.start(); setTimeout(() => { $('#alarm-sound').hidden = Sound.ready(); }, 300); });
+
+$('#alarm').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-al]');
+  if (!b) return;
+  const t = state.alarm;
+  state.silenced[`${t.id}:${t.due_at}`] = true;
+  closeAlarm();
+  const a = b.dataset.al;
+  const ok = a === 'done'
+    ? await act(t.id, 'done', {}, 'Tarefa concluída')
+    : a === 'tomorrow'
+      ? await act(t.id, 'snooze', { until: 'tomorrow' }, `Adiada para amanhã às ${tomorrowLabel(t)}`)
+      : await act(t.id, 'snooze', { minutes: Number(a) }, `Adiada ${a} min`);
+  if (!ok) { delete state.silenced[`${t.id}:${t.due_at}`]; checkAlarms(); }
+});
+
+// "Modo despertador": keep the screen on while the app is open, so alarms ring with sound.
+let wakeLock = null;
+async function applyWakeLock() {
+  const on = pref.get('wake') === '1';
+  $('#wake-toggle').checked = on;
+  const chip = $('#wake-chip');
+  chip.hidden = !on;
+  chip.innerHTML = `${icon('moon')}Despertador`;
+  if (on && !document.hidden && 'wakeLock' in navigator) {
+    try {
+      if (!wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } catch { /* not allowed right now */ }
+  } else if (!on && wakeLock) {
+    wakeLock.release();
+    wakeLock = null;
+  }
+}
+$('#wake-toggle').addEventListener('change', (e) => {
+  pref.set('wake', e.target.checked ? '1' : '0');
+  if (e.target.checked) {
+    Sound.unlock();
+    toast('Modo despertador ligado: a tela fica acesa com o app aberto');
+  }
+  applyWakeLock();
+});
+$('#wake-chip').addEventListener('click', () => { $('#wake-toggle').checked = false; pref.set('wake', '0'); applyWakeLock(); toast('Modo despertador desligado'); });
+
+$('#test-sound').addEventListener('click', () => {
+  Sound.unlock();
+  Sound.start();
+  setTimeout(() => Sound.stop(), 3000);
+  setTimeout(() => { if (!Sound.ready()) toast('O navegador bloqueou o som. Confira se o celular não está no silencioso.'); }, 500);
+});
+
+// ---------- push notifications ----------
 
 function b64ToBytes(s) {
-  const pad = '='.repeat((4 - (s.length % 4)) % 4);
-  const raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const raw = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
@@ -325,66 +740,49 @@ async function closeNotifications(id) {
 async function subscribe() {
   const reg = await swReg();
   let sub = await reg.pushManager.getSubscription();
-  if (!sub) {
-    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(state.vapid) });
-  }
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(state.vapid) });
   await api('subscribe', sub.toJSON());
-  return sub;
 }
 
-/** Works out whether this device can get push, and shows the right banner and settings. */
 async function refreshNotifications() {
-  const banner = $('#banner');
-  const status = $('#notif-status');
-  let html;
-  let bannerHtml = '';
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-
+  let html;
+  let banner = '';
   if (isIOS && !isStandalone) {
-    html = `<p>No iPhone, as notificações só funcionam com o app instalado:</p>
-      <ol><li>Abra este endereço no <b>Safari</b></li><li>Toque em <b>Compartilhar</b> (quadrado com seta ↑)</li>
-      <li>Toque em <b>Adicionar à Tela de Início</b></li><li>Abra o app pelo ícone <b>Tarefas</b> e ative aqui</li></ol>`;
-    bannerHtml = `<div class="banner">📲 Para receber os lembretes, instale o app: <b>Compartilhar → Adicionar à Tela de Início</b>, e abra pelo ícone.</div>`;
+    html = `<p>No iPhone, as notificações só funcionam com o app instalado: no <b>Safari</b>, toque em <b>Compartilhar</b>, depois em <b>Adicionar à Tela de Início</b>, e abra pelo ícone.</p>`;
+    banner = `<div class="banner"><p>Para receber lembretes e alarmes, instale o app: <b>Compartilhar → Adicionar à Tela de Início</b>.</p></div>`;
   } else if (!supported) {
-    html = '<p>Este navegador não suporta notificações. Use o Chrome (Android) ou o Safari (iPhone).</p>';
-    bannerHtml = `<div class="banner">⚠️ Este navegador não recebe notificações. Use o Chrome no Android ou o Safari no iPhone.</div>`;
+    html = '<p>Este navegador não recebe notificações. Use o Chrome no Android ou o Safari no iPhone.</p>';
+    banner = `<div class="banner"><p>Este navegador não recebe notificações. Use o Chrome no Android ou o Safari no iPhone.</p></div>`;
   } else if (Notification.permission === 'denied') {
-    html = `<p>As notificações estão <b>bloqueadas</b>. Libere em: ${isIOS ? 'Ajustes → Notificações → Tarefas' : 'cadeado/ⓘ ao lado do endereço → Permissões → Notificações'}.</p>`;
-    bannerHtml = `<div class="banner">🔕 Notificações bloqueadas neste aparelho. Libere nas configurações do ${isIOS ? 'iPhone' : 'navegador'}.</div>`;
+    html = `<p>Notificações <b>bloqueadas</b>. Libere em ${isIOS ? 'Ajustes → Notificações → Tarefas' : 'informações do site (ícone ao lado do endereço) → Notificações'}.</p>`;
+    banner = `<div class="banner"><p>Notificações bloqueadas neste aparelho. Sem elas, lembretes e alarmes só aparecem com o app aberto.</p></div>`;
   } else if (Notification.permission === 'granted') {
     try {
       await subscribe();
-      html = `<p class="ok">✅ Ativadas neste aparelho.</p><div class="row"><button id="test-push">Enviar teste</button></div>`;
+      html = `<p class="ok">Ativadas neste aparelho.</p><button class="btn ghost" id="test-push">Enviar notificação de teste</button>`;
     } catch (err) {
-      html = `<p class="error">Falha ao ativar: ${esc(err.message)}</p><button id="enable-push" class="primary">Tentar de novo</button>`;
+      html = `<p class="error">Falha ao ativar: ${esc(err.message)}</p><button class="btn" id="enable-push">Tentar de novo</button>`;
     }
   } else {
-    html = `<p>Ative para receber os lembretes e cobranças mesmo com o app fechado.</p><button id="enable-push" class="primary">Ativar notificações</button>`;
-    bannerHtml = `<div class="banner">🔔 Ative as notificações para receber os lembretes.<br><button class="primary" data-enable>Ativar notificações</button></div>`;
+    html = `<p class="muted">Ative para receber lembretes e alarmes com o app fechado.</p><button class="btn" id="enable-push">Ativar notificações</button>`;
+    banner = `<div class="banner"><p>Ative as notificações para receber lembretes e alarmes com o app fechado.</p><button class="btn" data-enable>Ativar</button></div>`;
   }
-  status.innerHTML = html;
-  banner.innerHTML = bannerHtml;
-}
-
-async function enablePush() {
-  try {
-    const perm = await Notification.requestPermission();
-    if (perm === 'granted') toast('🔔 Notificações ativadas!');
-  } catch (err) {
-    toast(err.message);
-  }
-  refreshNotifications();
+  $('#notif-status').innerHTML = html;
+  $('#banner').innerHTML = banner;
 }
 
 document.addEventListener('click', async (e) => {
-  if (e.target.matches('#enable-push, [data-enable]')) enablePush();
-  if (e.target.id === 'test-push') {
+  if (e.target.closest('#enable-push, [data-enable]')) {
+    Sound.unlock();
+    try { if (await Notification.requestPermission() === 'granted') toast('Notificações ativadas'); } catch (err) { toast(err.message); }
+    refreshNotifications();
+  }
+  if (e.target.closest('#test-push')) {
     try {
       const r = await api('test_push', null, { post: true });
-      toast(r.sent ? '📨 Teste enviado! Deve chegar em segundos.' : 'Nenhum aparelho recebeu. Tente desativar e ativar de novo.');
-    } catch (err) {
-      toast(err.message);
-    }
+      toast(r.sent ? 'Teste enviado. Deve chegar em segundos.' : 'Nenhum aparelho recebeu. Desative e ative de novo.');
+    } catch (err) { toast(err.message); }
   }
 });
 
@@ -395,63 +793,58 @@ $('#open-settings').addEventListener('click', () => {
   $('#admin-section').hidden = !state.user.is_admin;
   if (state.user.is_admin) loadUsers();
   refreshNotifications();
+  applyWakeLock();
   $('#settings').showModal();
 });
-$('#settings-close').addEventListener('click', () => $('#settings').close());
 
 $('#password-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const f = new FormData(e.target);
   try {
-    await api('password', { current: f.get('current'), new: f.get('new') });
+    await api('password', { current: $('#pw-current').value, new: $('#pw-new').value });
     e.target.reset();
-    toast('🔑 Senha alterada.');
-  } catch (err) {
-    toast(err.message);
-  }
+    toast('Senha alterada');
+  } catch (err) { toast(err.message); }
 });
 
+let confirmUser = null;
 async function loadUsers() {
   const r = await api('users');
   $('#users').innerHTML = r.users.map((u) => `<li data-id="${u.id}">
-      <div>${esc(u.name)}${u.is_admin ? ' 👑' : ''}<br><small>${esc(u.email)}</small></div>
-      <button data-u="reset">Nova senha</button>
-      ${u.id === state.user.id ? '' : '<button data-u="del" class="danger">Remover</button>'}
+      <div>${esc(u.name)}${u.is_admin ? ' · admin' : ''}<br><small>${esc(u.email)}</small></div>
+      <button class="btn ghost" data-u="reset">Nova senha</button>
+      ${u.id === state.user.id ? '' : `<button class="btn ghost danger" data-u="del">${confirmUser === u.id ? 'Confirmar' : 'Remover'}</button>`}
     </li>`).join('');
 }
 
 $('#users').addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-u]');
   if (!b) return;
-  const li = b.closest('li');
-  const id = Number(li.dataset.id);
+  const id = Number(b.closest('li').dataset.id);
   try {
     if (b.dataset.u === 'reset') {
       const password = prompt('Nova senha para este usuário (mín. 8 caracteres):');
       if (!password) return;
       await api('user_save', { id, password });
-      toast('🔑 Senha redefinida. Passe a nova senha para a pessoa.');
-    } else if (confirm('Remover este usuário e todas as tarefas dele?')) {
+      toast('Senha redefinida. Passe a nova senha para a pessoa.');
+    } else if (confirmUser !== id) {
+      confirmUser = id;
+    } else {
       await api('user_delete', { id });
-      toast('Usuário removido.');
+      confirmUser = null;
+      toast('Usuário removido');
     }
     loadUsers();
-  } catch (err) {
-    toast(err.message);
-  }
+  } catch (err) { toast(err.message); }
 });
 
 $('#user-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const f = new FormData(e.target);
   try {
-    await api('user_save', Object.fromEntries(f));
+    await api('user_save', { name: $('#u-name').value, email: $('#u-email').value, password: $('#u-password').value });
     e.target.reset();
-    toast('👤 Usuário criado. Passe o e-mail e a senha para a pessoa.');
+    toast('Usuário criado. Passe o e-mail e a senha para a pessoa.');
     loadUsers();
-  } catch (err) {
-    toast(err.message);
-  }
+  } catch (err) { toast(err.message); }
 });
 
 $('#logout').addEventListener('click', async () => {
@@ -468,15 +861,22 @@ $('#logout').addEventListener('click', async () => {
 // ---------- boot ----------
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js');
+  navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data?.type === 'refresh') loadTasks();
     if (e.data?.type === 'open' && e.data.id) { state.highlight = e.data.id; loadTasks(); }
   });
 }
 
-document.addEventListener('visibilitychange', () => { if (!document.hidden && state.user) loadTasks(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !state.user) return;
+  loadTasks();
+  applyWakeLock();
+});
 setInterval(() => { if (!document.hidden && state.user) loadTasks(); }, 30000);
+
+paintIcons();
+state.view = pref.get('view') === 'days' ? 'days' : 'list';
 
 (async function boot() {
   const t = Number(new URLSearchParams(location.search).get('t'));
