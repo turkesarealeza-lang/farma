@@ -11,7 +11,7 @@
     return Math.floor(d / 1000);
   };
 
-  const T = (o) => ({ status: 'scheduled', nag_count: 0, done_at: null, mode: 'push', desc_type: 'text', notes: '', checklist: [], base_at: o.due_at, ...o });
+  const T = (o) => ({ status: 'scheduled', nag_count: 0, done_at: null, mode: 'push', desc_type: 'text', notes: '', checklist: [], base_at: o.due_at, recur: '', recur_days: [], remind_before: 0, ...o });
   function seed() {
     return {
       nextId: 20,
@@ -26,7 +26,9 @@
         T({ id: 2, title: 'Pagar boleto da distribuidora', due_at: now() + 3 * 3600, mode: 'alarm', notes: 'Vence hoje. Código de barras no e-mail do financeiro.' }),
         T({ id: 3, title: 'Revisar criativos da Black Friday', due_at: at(1, 10), desc_type: 'checklist',
           checklist: [{ t: 'Conferir copy dos 3 anúncios', done: true }, { t: 'Ajustar oferta no vídeo 2', done: false }, { t: 'Aprovar com a agência', done: false }] }),
-        T({ id: 4, title: 'Tomar vitamina D', due_at: at(1, 8), mode: 'alarm' }),
+        T({ id: 4, title: 'Tomar vitamina D', due_at: at(1, 8), mode: 'alarm', recur: 'daily' }),
+        T({ id: 9, title: 'Reunião de pauta com a agência', due_at: at(((1 - new Date().getDay() + 7) % 7) || 7, 10), recur: 'weekly', recur_days: [1, 4], remind_before: 15, notes: 'Levar números de ROAS e CPA da semana.' }),
+        T({ id: 10, title: 'Pagar aluguel da loja', due_at: at(3, 9), recur: 'monthly', recur_days: [new Date(Date.now() + 3 * 86400000).getDate()], remind_before: 60 }),
         T({ id: 5, title: 'Renovar alvará sanitário', due_at: at(5, 9), notes: 'Levar CNPJ, contrato social e o último laudo.' }),
         T({ id: 6, title: 'Fechar pedido do laboratório', due_at: at(8, 14), desc_type: 'checklist',
           checklist: [{ t: 'Conferir estoque de cápsulas', done: false }, { t: 'Pedir orçamento', done: false }] }),
@@ -72,7 +74,17 @@
   // ---- fake api.php ----
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const find = (id) => db.tasks.find((t) => t.id === Number(id));
-  const tomorrowSame = (t) => { const b = new Date((t.base_at || t.due_at) * 1000); const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(b.getHours(), b.getMinutes(), 0, 0); return Math.floor(d / 1000); };
+  const tomorrowSame = (t) => { const b = new Date((t.base_at || t.due_at) * 1000); const d = new Date(Math.max(Date.now(), t.due_at * 1000)); d.setDate(d.getDate() + 1); d.setHours(b.getHours(), b.getMinutes(), 0, 0); return Math.floor(d / 1000); };
+  function nextOcc(t) {  // same rule as next_occurrence() on the server
+    const b = new Date(t.base_at * 1000), after = Math.max(t.base_at, now());
+    const d = new Date(after * 1000);
+    for (let i = 0; i < 400; i++, d.setDate(d.getDate() + 1)) {
+      const c = new Date(d); c.setHours(b.getHours(), b.getMinutes(), 0, 0);
+      const k = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
+      if (c / 1000 > after && recursOn(t, k)) return Math.floor(c / 1000);
+    }
+    return t.due_at;
+  }
 
   async function route(action, init) {
     await new Promise((r) => setTimeout(r, 200));  // feel of a network round trip
@@ -101,7 +113,10 @@
         const fields = { title: body.title.trim(), due_at: due, base_at: due, mode: body.mode === 'alarm' ? 'alarm' : 'push',
           desc_type: body.desc_type === 'checklist' ? 'checklist' : 'text', notes: (body.notes || '').trim(),
           checklist: (body.checklist || []).filter((i) => i.t.trim()).map((i) => ({ t: i.t.trim(), done: !!i.done })),
-          status: 'scheduled', nag_count: 0, done_at: null };
+          status: 'scheduled', nag_count: 0, done_at: null,
+          recur: ['daily', 'weekdays', 'weekly', 'monthly'].includes(body.recur) ? body.recur : '',
+          recur_days: body.recur === 'weekly' ? [...(body.recur_days || [])].sort() : body.recur === 'monthly' ? [new Date(due * 1000).getDate()] : [],
+          remind_before: [5, 15, 30, 60].includes(body.remind_before) ? body.remind_before : 0 };
         let t = body.id ? find(body.id) : null;
         if (t) Object.assign(t, fields); else { t = T({ id: db.nextId++, ...fields }); db.tasks.push(t); }
         return json({ task: t });
@@ -114,11 +129,16 @@
       case 'act': {
         const t = find(body.id);
         if (!t) return json({ error: 'Tarefa não encontrada.' }, 404);
-        if (body.action === 'done') Object.assign(t, { status: 'done', done_at: now() });
+        if (body.action === 'done' && !t.recur) Object.assign(t, { status: 'done', done_at: now() });
+        if ((body.action === 'done' || body.action === 'skip') && t.recur) {
+          if (body.action === 'done') db.tasks.push(T({ ...t, id: db.nextId++, recur: '', status: 'done', done_at: now(), checklist: t.checklist.map((i) => ({ ...i })) }));
+          t.due_at = nextOcc(t); t.base_at = t.due_at; t.status = 'scheduled'; t.nag_count = 0;
+          t.checklist = t.checklist.map((i) => ({ ...i, done: false }));
+        }
         if (body.action === 'delete') db.tasks = db.tasks.filter((x) => x !== t);
         if (body.action === 'reopen') Object.assign(t, { status: 'scheduled', done_at: null, nag_count: 0, due_at: Math.max(t.due_at, now() + 300) });
         if (body.action === 'snooze') {
-          if (body.until === 'tomorrow') { t.due_at = tomorrowSame(t); t.base_at = t.due_at; } else t.due_at = now() + (body.minutes || 5) * 60;
+          if (body.until === 'tomorrow') { t.due_at = tomorrowSame(t); if (!t.recur) t.base_at = t.due_at; } else t.due_at = now() + (body.minutes || 5) * 60;
           t.status = 'scheduled';
         }
         return json({ task: t });

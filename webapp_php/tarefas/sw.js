@@ -1,7 +1,7 @@
 'use strict';
 // Service worker: shows push notifications, handles their buttons, and caches the app shell.
 
-const CACHE = 'tarefas-v2';
+const CACHE = 'tarefas-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/badge-96.png'];
 
 self.addEventListener('install', (e) => {
@@ -41,7 +41,9 @@ self.addEventListener('push', (e) => {
     badge: 'icons/badge-96.png',
     data: { id: d.id || 0 },
   };
-  if (d.id) {
+  if (d.id && d.mode === 'pre') {  // advance notice: informative, no buttons
+    Object.assign(opts, { tag: 'pre-' + d.id, data: { id: d.id }, vibrate: [200, 100, 200] });
+  } else if (d.id) {
     // One notification per task: each nag replaces the previous one but still rings.
     const alarm = d.mode === 'alarm';
     Object.assign(opts, {

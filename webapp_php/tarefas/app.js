@@ -5,7 +5,7 @@ const $ = (s) => document.querySelector(s);
 const state = {
   user: null, vapid: null, open: [], done: [], view: 'list', highlight: null,
   month: null, selDay: null, editId: null, detailId: null, confirmDelete: false,
-  mode: 'push', descType: 'text', items: [], alarm: null, silenced: {},
+  mode: 'push', descType: 'text', items: [], recur: '', wdays: [], remind: 0, alarm: null, silenced: {},
 };
 
 // ---------- icons (inline SVG, stroke = currentColor) ----------
@@ -31,6 +31,8 @@ const ICONS = {
   volume: '<path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/>',
   moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
   checklist: '<path d="M10 6h11M10 12h11M10 18h11M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/>',
+  repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 01-3 3H3"/>',
+  skip: '<path d="M5 4l10 8-10 8zM19 5v14"/>',
 };
 const icon = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 function paintIcons(root = document) {
@@ -103,7 +105,7 @@ function lateText(ts) {
   return h < 48 ? `${h} h de atraso` : `${Math.floor(h / 24)} dias de atraso`;
 }
 
-/** "Tomorrow, same time" label for snooze buttons (mirrors tomorrow_same_time on the server). */
+/** "Next day, same time" label for snooze buttons (mirrors tomorrow_same_time on the server). */
 const tomorrowLabel = (t) => fmtTime(t.base_at || t.due_at);
 
 function descPreview(t) {
@@ -115,6 +117,44 @@ function descPreview(t) {
   const line = (t.notes || '').split('\n').map((s) => s.trim()).find(Boolean) || '';
   return { text: line };
 }
+
+// ---------- recurrence (mirrors recurs_on / next_occurrence on the server) ----------
+
+const WD_SHORT = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const RECUR_SHORT = { daily: 'diária', weekdays: 'dias úteis', weekly: 'semanal', monthly: 'mensal' };
+const monthDay = (t) => t.recur_days[0] || Number(dayKey(t.base_at).slice(8));
+const weekDays = (t) => (t.recur_days.length ? t.recur_days : [keyToDate(dayKey(t.base_at)).getUTCDay()]);
+
+function recurLabel(t) {
+  const time = fmtTime(t.base_at);
+  if (t.recur === 'daily') return `Todo dia às ${time}`;
+  if (t.recur === 'weekdays') return `Dias úteis às ${time}`;
+  if (t.recur === 'weekly') return `Toda ${weekDays(t).map((d) => WD_SHORT[d]).join(', ')} às ${time}`;
+  if (t.recur === 'monthly') return `Todo dia ${monthDay(t)} às ${time}`;
+  return '';
+}
+
+function recursOn(t, k) {
+  const d = keyToDate(k);
+  const wd = d.getUTCDay();
+  if (t.recur === 'daily') return true;
+  if (t.recur === 'weekdays') return wd >= 1 && wd <= 5;
+  if (t.recur === 'weekly') return weekDays(t).includes(wd);
+  if (t.recur === 'monthly') {
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    return d.getUTCDate() === Math.min(monthDay(t), last);
+  }
+  return false;
+}
+
+/** Timestamp of a day key at the task's time of day. Brasília has no daylight saving time (UTC−3 all year). */
+function atKey(k, baseTs) {
+  const p = parts(baseTs);
+  const [y, m, d] = k.split('-').map(Number);
+  return Date.UTC(y, m - 1, d, Number(p.hour) + 3, Number(p.minute)) / 1000;
+}
+
+const remindLabel = (m) => (m >= 60 ? `${m / 60} h` : `${m} min`);
 
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -176,13 +216,20 @@ function replaceTask(t) {
 // ---------- rendering ----------
 
 function taskRow(t) {
+  if (t.virtual) {  // a future occurrence of a recurring task, projected on the calendar
+    return `<button class="task virtual" data-id="${t.id}">
+      <div class="t-time"><b>${fmtTime(t.due_at)}</b><small>${fmtShort(t.due_at)}</small></div>
+      <div class="t-main"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(recurLabel(t))}</div></div>
+      <div class="t-meta"><span class="pill recur">${icon('repeat')}${RECUR_SHORT[t.recur]}</span></div>
+    </button>`;
+  }
   const late = t.status !== 'done' && t.due_at <= nowS();
   const d = descPreview(t);
   const when = t.status === 'done' ? fmtShort(t.done_at) : fmtShort(t.due_at);
   return `<button class="task ${late ? 'late' : ''} ${t.status === 'done' ? 'done' : ''} ${state.highlight === t.id ? 'highlight' : ''}" data-id="${t.id}">
     <div class="t-time"><b>${fmtTime(t.status === 'done' ? t.done_at : t.due_at)}</b><small>${late ? 'atrasada' : when}</small></div>
     <div class="t-main"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(d.text)}</div></div>
-    <div class="t-meta">${d.pill ? `<span class="pill ${d.full ? 'full' : ''}">${icon('checklist')}${d.pill}</span>` : ''}${t.mode === 'alarm' ? icon('alarm', 'alarm-ic') : icon('bell')}</div>
+    <div class="t-meta">${t.recur && t.status !== 'done' ? `<span class="pill recur">${icon('repeat')}${RECUR_SHORT[t.recur]}</span>` : ''}${d.pill ? `<span class="pill ${d.full ? 'full' : ''}">${icon('checklist')}${d.pill}</span>` : ''}${t.mode === 'alarm' ? icon('alarm', 'alarm-ic') : icon('bell')}</div>
   </button>`;
 }
 
@@ -236,13 +283,21 @@ function renderDays() {
   allTasks().forEach((t) => {
     (byDay[dayKey(t.due_at)] ||= []).push(t);
   });
+  // Future occurrences of recurring tasks in the month shown.
+  state.open.filter((t) => t.recur).forEach((t) => {
+    const from = dayKey(t.due_at) > today ? dayKey(t.due_at) : today;
+    for (let d = 1; d <= daysIn; d++) {
+      const k = `${state.month}-${String(d).padStart(2, '0')}`;
+      if (k > from && recursOn(t, k)) (byDay[k] ||= []).push({ ...t, virtual: true, due_at: atKey(k, t.base_at) });
+    }
+  });
   const now = nowS();
   let cells = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d) => `<div class="cal-wd" aria-hidden="true">${d}</div>`).join('');
   for (let i = 0; i < first.getUTCDay(); i++) cells += '<span class="day out"></span>';
   for (let d = 1; d <= daysIn; d++) {
     const k = `${state.month}-${String(d).padStart(2, '0')}`;
     const list = byDay[k] || [];
-    const dots = list.slice(0, 3).map((t) => `<i class="${t.status === 'done' ? 'done' : t.due_at <= now ? 'late' : ''}"></i>`).join('');
+    const dots = list.slice(0, 3).map((t) => `<i class="${t.status === 'done' ? 'done' : t.due_at <= now ? 'late' : t.recur ? 'recur' : ''}"></i>`).join('');
     const label = `${fmtLong(k)}: ${list.length ? list.length + (list.length === 1 ? ' tarefa' : ' tarefas') : 'sem tarefas'}`;
     cells += `<button class="day ${list.length ? 'has' : ''} ${k === today ? 'today' : ''}" data-day="${k}" aria-pressed="${k === state.selDay}" aria-label="${label}">${d}<span class="dots">${dots}</span></button>`;
   }
@@ -257,7 +312,7 @@ function renderDays() {
         <button class="icon" data-month="1" aria-label="Próximo mês">${icon('right')}</button>
       </div>
       <div class="cal-grid">${cells}</div>
-      <div class="cal-legend"><span><i></i>ativa</span><span><i class="late"></i>atrasada</span><span><i class="done"></i>concluída</span></div>
+      <div class="cal-legend"><span><i></i>ativa</span><span><i class="late"></i>atrasada</span><span><i class="recur"></i>recorrente</span><span><i class="done"></i>concluída</span></div>
     </section>
     <div class="day-title"><div><h2>${rel || fmtLong(state.selDay)}</h2>${rel ? `<p class="muted small">${fmtLong(state.selDay)}</p>` : ''}</div>
       <span class="muted small">${sel.length || 'sem'} ${sel.length === 1 ? 'tarefa' : 'tarefas'}</span></div>
@@ -332,21 +387,26 @@ function renderDetail() {
   } else if (t.notes) {
     desc = `<div class="d-notes">${linkify(esc(t.notes))}</div>`;
   }
+  const delLabel = state.confirmDelete ? 'Confirmar exclusão' : t.recur ? 'Excluir série' : 'Excluir';
   const actions = done
     ? `<div class="d-row"><button class="btn ghost" data-d="reopen">${icon('undo')}Reabrir</button>
-        <button class="btn ghost danger" data-d="delete">${icon('trash')}${state.confirmDelete ? 'Confirmar exclusão' : 'Excluir'}</button></div>`
-    : `<button class="btn wide" data-d="done">${icon('check')}Concluir tarefa</button>
-      <p class="fld" style="margin:4px 0 -4px">Adiar</p>
+        <button class="btn ghost danger" data-d="delete">${icon('trash')}${delLabel}</button></div>`
+    : `<button class="btn wide" data-d="done">${icon('check')}${t.recur ? 'Concluir esta vez' : 'Concluir tarefa'}</button>
+      ${t.recur ? `<button class="btn ghost wide" data-d="skip">${icon('skip')}Pular esta vez</button>` : ''}
+      ${late ? `<p class="fld" style="margin:4px 0 -4px">Adiar</p>
       <div class="d-snooze">
         <button data-d="s5">+5 min</button><button data-d="s30">+30 min</button>
-        <button data-d="tomorrow">Amanhã<small>às ${tomorrowLabel(t)}</small></button>
-      </div>
+        <button data-d="tomorrow">Dia seguinte<small>às ${tomorrowLabel(t)}</small></button>
+      </div>` : ''}
       <div class="d-row"><button class="btn ghost" data-d="edit">${icon('edit')}Editar</button>
-        <button class="btn ghost danger" data-d="delete">${icon('trash')}${state.confirmDelete ? 'Confirmar exclusão' : 'Excluir'}</button></div>`;
+        <button class="btn ghost danger" data-d="delete">${icon('trash')}${delLabel}</button></div>`;
   $('#detail').innerHTML = `<div class="inner">
     <div class="sheet-head">
-      <span class="d-mode ${t.mode === 'alarm' ? 'alarm' : ''}">${icon(t.mode === 'alarm' ? 'alarm' : 'bell')}${t.mode === 'alarm' ? 'Alarme' : 'Notificação'}</span>
-      <span style="flex:1"></span>
+      <div class="d-tags">
+        <span class="d-mode ${t.mode === 'alarm' ? 'alarm' : ''}">${icon(t.mode === 'alarm' ? 'alarm' : 'bell')}${t.mode === 'alarm' ? 'Alarme' : 'Notificação'}</span>
+        ${t.recur && !done ? `<span class="d-mode recur">${icon('repeat')}${recurLabel(t)}</span>` : ''}
+        ${t.remind_before && !done ? `<span class="d-mode">Aviso ${remindLabel(t.remind_before)} antes</span>` : ''}
+      </div>
       <button class="icon" data-close aria-label="Fechar">${icon('x')}</button>
     </div>
     <h2 class="d-title">${esc(t.title)}</h2>
@@ -385,9 +445,10 @@ $('#detail').addEventListener('click', async (e) => {
   if (a === 'edit') { $('#detail').close(); openEditor(t); return; }
   if (a === 'delete' && !state.confirmDelete) { state.confirmDelete = true; renderDetail(); return; }
   const map = {
-    done: ['done', {}, 'Tarefa concluída'], reopen: ['reopen', {}, 'Tarefa reaberta'], delete: ['delete', {}, 'Tarefa excluída'],
+    done: ['done', {}, t.recur ? 'Concluída. Vai para a próxima ocorrência.' : 'Tarefa concluída'],
+    skip: ['skip', {}, 'Pulada. Vai para a próxima ocorrência.'], reopen: ['reopen', {}, 'Tarefa reaberta'], delete: ['delete', {}, 'Tarefa excluída'],
     s5: ['snooze', { minutes: 5 }, 'Adiada 5 min'], s30: ['snooze', { minutes: 30 }, 'Adiada 30 min'],
-    tomorrow: ['snooze', { until: 'tomorrow' }, `Adiada para amanhã às ${tomorrowLabel(t)}`],
+    tomorrow: ['snooze', { until: 'tomorrow' }, `Adiada para o dia seguinte às ${tomorrowLabel(t)}`],
   };
   const [action, extra, msg] = map[a];
   $('#detail').close();
@@ -396,9 +457,11 @@ $('#detail').addEventListener('click', async (e) => {
 
 async function act(id, action, extra, msg) {
   try {
-    await api('act', { id, action, ...extra });
+    const r = await api('act', { id, action, ...extra });
     closeNotifications(id);
-    toast(msg);
+    toast(r.task?.recur && (action === 'done' || action === 'skip')
+      ? `Próxima: ${relDay(dayKey(r.task.due_at)) || fmtShort(r.task.due_at)} às ${fmtTime(r.task.due_at)}`
+      : msg);
     await loadTasks();
     return true;
   } catch (err) {
@@ -425,15 +488,61 @@ function openEditor(task = null, preset = {}) {
   $('#f-notes').value = task ? task.notes : '';
   state.items = task ? task.checklist.map((i) => ({ ...i })) : [];
   setMode(task ? task.mode : pref.get('lastMode') || 'push');
+  state.wdays = task && task.recur === 'weekly' ? [...task.recur_days] : [];
+  setRecur(task ? task.recur : '');
+  setRemind(task ? task.remind_before : 0);
   setDescType(task ? task.desc_type : 'text', false);
   if (task) setDue(task.due_at);
   else {
     setDue(Math.ceil((nowS() + 3600) / 1800) * 1800);
     if (preset.day) $('#f-date').value = preset.day;
   }
+  recurHint();
   $('#editor').showModal();
   if (!task) setTimeout(() => $('#f-title').focus(), 50);
 }
+
+function setRecur(r) {
+  state.recur = r;
+  document.querySelectorAll('#f-recur [data-r]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.r === r)));
+  $('#f-wdays').hidden = r !== 'weekly';
+  if (r === 'weekly' && !state.wdays.length && $('#f-date').value) state.wdays = [keyToDate($('#f-date').value).getUTCDay()];
+  document.querySelectorAll('#f-wdays [data-wd]').forEach((b) => b.setAttribute('aria-pressed', String(state.wdays.includes(Number(b.dataset.wd)))));
+  recurHint();
+}
+
+function setRemind(m) {
+  state.remind = Number(m);
+  document.querySelectorAll('#f-remind [data-m]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.m) === state.remind)));
+}
+
+/** Plain-language summary of the repeat rule under the buttons. */
+function recurHint() {
+  const h = $('#f-recur-hint');
+  const date = $('#f-date').value;
+  const time = $('#f-time').value || '--:--';
+  h.hidden = !state.recur;
+  if (!state.recur || !date) return;
+  const dom = Number(date.slice(8));
+  const days = [...state.wdays].sort();
+  h.textContent = {
+    daily: `Repete todo dia às ${time}.`,
+    weekdays: `Repete de segunda a sexta às ${time}.`,
+    weekly: days.length ? `Repete toda ${days.map((d) => WD_SHORT[d]).join(', ')} às ${time}.` : 'Escolha os dias da semana.',
+    monthly: `Repete todo dia ${dom} às ${time}.${dom > 28 ? ' Em meses mais curtos, no último dia do mês.' : ''}`,
+  }[state.recur] + ' Ao concluir, a próxima já fica agendada.';
+}
+
+$('#f-recur').addEventListener('click', (e) => { const b = e.target.closest('[data-r]'); if (b) setRecur(b.dataset.r); });
+$('#f-wdays').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-wd]');
+  if (!b) return;
+  const d = Number(b.dataset.wd);
+  state.wdays = state.wdays.includes(d) ? state.wdays.filter((x) => x !== d) : [...state.wdays, d];
+  setRecur('weekly');
+});
+$('#f-remind').addEventListener('click', (e) => { const b = e.target.closest('[data-m]'); if (b) setRemind(b.dataset.m); });
+['#f-date', '#f-time'].forEach((s) => $(s).addEventListener('change', recurHint));
 
 function setMode(mode) {
   state.mode = mode;
@@ -506,6 +615,7 @@ $('#f-quick').addEventListener('click', (e) => {
     const wd = keyToDate(today).getUTCDay();
     $('#f-date').value = shiftKey(today, ((8 - wd) % 7) || 7);
   }
+  recurHint();
 });
 
 $('#editor-form').addEventListener('submit', async (e) => {
@@ -515,10 +625,12 @@ $('#editor-form').addEventListener('submit', async (e) => {
   const time = $('#f-time').value;
   if (!title) { $('#editor-error').textContent = 'Dê um título para a tarefa.'; $('#f-title').focus(); return; }
   if (!date || !time) { $('#editor-error').textContent = 'Escolha data e hora.'; return; }
+  if (state.recur === 'weekly' && !state.wdays.length) { $('#editor-error').textContent = 'Escolha pelo menos um dia da semana.'; return; }
   try {
     const r = await api('save', {
       id: state.editId, title, due: `${date}T${time}`, mode: state.mode, desc_type: state.descType,
       notes: $('#f-notes').value, checklist: state.items.filter((i) => i.t.trim()),
+      recur: state.recur, recur_days: state.wdays, remind_before: state.remind,
     });
     pref.set('lastMode', state.mode);
     $('#editor').close();

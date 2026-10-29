@@ -119,6 +119,10 @@ function db(): PDO
             'desc_type' => "TEXT NOT NULL DEFAULT 'text'",  // text | checklist
             'mode' => "TEXT NOT NULL DEFAULT 'push'",       // push | alarm
             'base_at' => 'INTEGER',                          // time the user picked, kept through snoozes
+            'recur' => "TEXT NOT NULL DEFAULT ''",           // '' | daily | weekdays | weekly | monthly
+            'recur_days' => "TEXT NOT NULL DEFAULT ''",      // weekly: weekdays 0-6 (0 = Sunday); monthly: day of month
+            'remind_before' => 'INTEGER NOT NULL DEFAULT 0',  // minutes of advance notice, 0 = none
+            'pre_sent_for' => 'INTEGER',                     // due_at whose advance notice was already sent
         ];
         foreach ($new as $col => $def) {
             if (!in_array($col, $cols, true)) {
@@ -306,7 +310,73 @@ function task_json(array $t): array
         'nag_count' => (int)$t['nag_count'], 'done_at' => $t['done_at'] === null ? null : (int)$t['done_at'],
         'mode' => $t['mode'], 'desc_type' => $t['desc_type'], 'notes' => $t['notes'],
         'checklist' => json_decode($t['checklist'], true) ?: [],
+        'base_at' => (int)($t['base_at'] ?? $t['due_at']), 'recur' => $t['recur'],
+        'recur_days' => $t['recur_days'] === '' ? [] : array_map('intval', explode(',', $t['recur_days'])),
+        'remind_before' => (int)$t['remind_before'],
     ];
+}
+
+const RECUR_TYPES = ['daily', 'weekdays', 'weekly', 'monthly'];
+const REMIND_OPTIONS = [0, 5, 15, 30, 60];
+
+/** Whether a recurring task falls on a given day. */
+function recurs_on(array $t, DateTime $day, DateTime $base): bool
+{
+    $wd = (int)$day->format('w');
+    switch ($t['recur']) {
+        case 'daily':
+            return true;
+        case 'weekdays':
+            return $wd >= 1 && $wd <= 5;
+        case 'weekly':
+            $days = $t['recur_days'] === '' ? [(int)$base->format('w')] : array_map('intval', explode(',', $t['recur_days']));
+            return in_array($wd, $days, true);
+        case 'monthly':  // same day of month; short months use their last day
+            $dom = (int)$t['recur_days'] ?: (int)$base->format('j');
+            return (int)$day->format('j') === min($dom, (int)$day->format('t'));
+    }
+    return false;
+}
+
+/** First occurrence of a recurring task strictly after $after, at the time of day of its base time. */
+function next_occurrence(array $t, int $after): ?int
+{
+    $tz = new DateTimeZone(date_default_timezone_get());
+    $base = (new DateTime('@' . (int)($t['base_at'] ?? $t['due_at'])))->setTimezone($tz);
+    $day = (new DateTime('@' . $after))->setTimezone($tz);
+    for ($i = 0; $i < 400; $i++) {
+        $cand = (clone $day)->setTime((int)$base->format('H'), (int)$base->format('i'));
+        if ($cand->getTimestamp() > $after && recurs_on($t, $cand, $base)) {
+            return $cand->getTimestamp();
+        }
+        $day->modify('+1 day');
+    }
+    return null;
+}
+
+/**
+ * Completes a task. A recurring task leaves a done copy for the history and moves on to its next
+ * occurrence, with the checklist unticked again.
+ */
+function complete_task(array $t): void
+{
+    if ($t['recur'] === '') {
+        q("UPDATE tasks SET status = 'done', done_at = ? WHERE id = ? AND status IN ('scheduled', 'nagging')", [time(), $t['id']]);
+        return;
+    }
+    q("INSERT INTO tasks (user_id, text, due_at, base_at, status, nag_count, created_at, done_at, mode, desc_type, notes, checklist)
+       VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?)",
+        [$t['user_id'], $t['text'], $t['due_at'], $t['due_at'], $t['nag_count'], time(), time(), $t['mode'], $t['desc_type'], $t['notes'], $t['checklist']]);
+    advance_recurring($t);
+}
+
+/** Moves a recurring task to its next occurrence (after completing or skipping this one). */
+function advance_recurring(array $t): void
+{
+    $next = next_occurrence($t, max((int)($t['base_at'] ?? $t['due_at']), time()));
+    $items = array_map(fn($i) => ['t' => $i['t'], 'done' => false], json_decode($t['checklist'], true) ?: []);
+    q("UPDATE tasks SET due_at = ?, base_at = ?, status = 'scheduled', last_nag_at = NULL, nag_count = 0, checklist = ? WHERE id = ?",
+        [$next, $next, json_encode($items, JSON_UNESCAPED_UNICODE), $t['id']]);
 }
 
 /** Validates the checklist sent by the app: [{t: string, done: bool}, ...]. */
@@ -322,12 +392,15 @@ function clean_checklist($items): array
     return $out;
 }
 
-/** Tomorrow (counting from now) at the time of day the user originally picked. */
+/**
+ * The day after the task's day (or after today, if it is already overdue), at the time of day the
+ * user originally picked.
+ */
 function tomorrow_same_time(array $t): int
 {
-    $base = new DateTime('@' . (int)($t['base_at'] ?? $t['due_at']));
-    $base->setTimezone(new DateTimeZone(date_default_timezone_get()));
-    $d = new DateTime('tomorrow');
+    $tz = new DateTimeZone(date_default_timezone_get());
+    $base = (new DateTime('@' . (int)($t['base_at'] ?? $t['due_at'])))->setTimezone($tz);
+    $d = (new DateTime('@' . max(time(), (int)$t['due_at'])))->setTimezone($tz)->modify('+1 day');
     $d->setTime((int)$base->format('H'), (int)$base->format('i'));
     return $d->getTimestamp();
 }
@@ -355,15 +428,26 @@ function save_task(int $userId, ?int $id, array $in, int $due): array
     $descType = ($in['desc_type'] ?? '') === 'checklist' ? 'checklist' : 'text';
     $notes = trim(mb_substr((string)($in['notes'] ?? ''), 0, 5000));
     $checklist = json_encode(clean_checklist($in['checklist'] ?? []), JSON_UNESCAPED_UNICODE);
-    $fields = [$title, $due, $due, $mode, $descType, $notes, $checklist];
+    $recur = in_array($in['recur'] ?? '', RECUR_TYPES, true) ? $in['recur'] : '';
+    $days = $recur === 'weekly' && is_array($in['recur_days'] ?? null)
+        ? array_values(array_unique(array_map('intval', array_filter($in['recur_days'], fn($d) => is_int($d) && $d >= 0 && $d <= 6))))
+        : [];
+    sort($days);
+    if ($recur === 'monthly') {
+        $days = [(int)date('j', $due)];  // remember "day 31" even after it lands on a shorter month's last day
+    }
+    $remind = (int)($in['remind_before'] ?? 0);
+    $remind = in_array($remind, REMIND_OPTIONS, true) ? $remind : 0;
+    $fields = [$title, $due, $due, $mode, $descType, $notes, $checklist, $recur, implode(',', $days), $remind];
     if ($id) {
         get_task($id, $userId);
         q("UPDATE tasks SET text = ?, due_at = ?, base_at = ?, mode = ?, desc_type = ?, notes = ?, checklist = ?,
+           recur = ?, recur_days = ?, remind_before = ?, pre_sent_for = NULL,
            status = 'scheduled', last_nag_at = NULL, nag_count = 0, done_at = NULL WHERE id = ? AND user_id = ?",
             [...$fields, $id, $userId]);
     } else {
-        q('INSERT INTO tasks (text, due_at, base_at, mode, desc_type, notes, checklist, user_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [...$fields, $userId, time()]);
+        q('INSERT INTO tasks (text, due_at, base_at, mode, desc_type, notes, checklist, recur, recur_days, remind_before, user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [...$fields, $userId, time()]);
         $id = (int)db()->lastInsertId();
     }
     return task_json(get_task($id, $userId));
@@ -487,11 +571,24 @@ function push_user(int $userId, array $payload, ?string $topic = null): int
 function run_nags(): int
 {
     $now = time();
+    $sent = 0;
+
+    // Advance notice ("avisar antes"): one notification per occurrence, ahead of the due time.
+    $pre = q("SELECT * FROM tasks WHERE status = 'scheduled' AND remind_before > 0 AND due_at > ?
+              AND due_at - remind_before * 60 <= ? + 30 AND (pre_sent_for IS NULL OR pre_sent_for != due_at)", [$now, $now])->fetchAll();
+    foreach ($pre as $t) {
+        $mins = max(1, (int)round(((int)$t['due_at'] - $now) / 60));
+        $in = $mins >= 60 ? intdiv($mins, 60) . ' h' . ($mins % 60 ? ' ' . ($mins % 60) . ' min' : '') : "$mins min";
+        $kind = $t['mode'] === 'alarm' ? 'Alarme' : 'Lembrete';
+        $payload = ['title' => "Em $in · " . $t['text'], 'body' => "$kind às " . date('H:i', (int)$t['due_at']) . '.', 'id' => (int)$t['id'], 'mode' => 'pre'];
+        $sent += push_user((int)$t['user_id'], $payload, "pre{$t['id']}");
+        q('UPDATE tasks SET pre_sent_for = due_at WHERE id = ?', [$t['id']]);
+    }
+
     // 30s tolerance so a cron firing a few seconds early doesn't push the nag to the next minute.
     $due = q("SELECT * FROM tasks WHERE status IN ('scheduled', 'nagging') AND due_at <= ?
               AND (last_nag_at IS NULL OR last_nag_at <= ? - CASE mode WHEN 'alarm' THEN ? ELSE ? END + 30)
               ORDER BY due_at", [$now, $now, ALARM_INTERVAL, NAG_INTERVAL])->fetchAll();
-    $sent = 0;
     foreach ($due as $t) {
         $count = (int)$t['nag_count'];
         $late = intdiv($now - (int)$t['due_at'], 60);

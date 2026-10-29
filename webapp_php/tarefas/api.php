@@ -117,7 +117,13 @@ try {
             $open = "AND status IN ('scheduled', 'nagging')";
             switch ($in['action'] ?? '') {
                 case 'done':
-                    q("UPDATE tasks SET status = 'done', done_at = ? WHERE id = ? $open", [time(), $id]);
+                    complete_task($task);
+                    break;
+                case 'skip':  // recurring: jump to the next occurrence without marking this one done
+                    if ($task['recur'] === '') {
+                        throw new ApiError('Só tarefas recorrentes podem pular.');
+                    }
+                    advance_recurring($task);
                     break;
                 case 'delete':
                     q('DELETE FROM tasks WHERE id = ?', [$id]);
@@ -127,9 +133,11 @@ try {
                        due_at = MAX(due_at, ?) WHERE id = ? AND status = 'done'", [time() + 300, $id]);
                     break;
                 case 'snooze':
-                    if (($in['until'] ?? '') === 'tomorrow') {  // same time of day, next day; becomes the new base time
+                    if (($in['until'] ?? '') === 'tomorrow') {  // same time of day, next day
                         $until = tomorrow_same_time($task);
-                        q("UPDATE tasks SET due_at = ?, base_at = ?, status = 'scheduled', last_nag_at = NULL WHERE id = ? $open", [$until, $until, $id]);
+                        // A one-off task takes it as its new base time; a recurring one keeps its schedule.
+                        $base = $task['recur'] === '' ? $until : (int)$task['base_at'];
+                        q("UPDATE tasks SET due_at = ?, base_at = ?, status = 'scheduled', last_nag_at = NULL WHERE id = ? $open", [$until, $base, $id]);
                     } else {
                         $until = time() + max(1, (int)($in['minutes'] ?? 5)) * 60;
                         q("UPDATE tasks SET due_at = ?, status = 'scheduled', last_nag_at = NULL WHERE id = ? $open", [$until, $id]);

@@ -14,6 +14,8 @@
   --accent-soft: rgba(212, 98, 43, .16);
   --on-accent: #fff;
   --neg: #f06f7a;
+  --recur: #b493f5;
+  --recur-soft: rgba(180, 147, 245, .16);
   --pos: #7fcf9b;
   --f-display: "Outfit", "Helvetica Neue", Arial, sans-serif;
   --f-body: "Figtree", "Helvetica Neue", Arial, sans-serif;
@@ -152,6 +154,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .task.highlight { background: var(--accent-soft); }
 .pill { display: inline-flex; align-items: center; gap: 4px; background: var(--card2); color: var(--muted); border-radius: 999px; padding: 2px 8px; font-size: 12px; }
 .pill.full { color: var(--pos); }
+.pill.recur { background: var(--recur-soft); color: var(--recur); }
+.task.virtual { opacity: .72; }
+.task.virtual .t-time b { color: var(--recur); }
 
 .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
 .empty h2 { font: 300 26px var(--f-display); color: var(--fg); margin-bottom: 6px; }
@@ -182,11 +187,13 @@ details.done-group[open] summary .chev { transform: rotate(90deg); }
 .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-2); }
 .dots i.done { background: var(--dim); }
 .dots i.late { background: var(--neg); }
+.dots i.recur { background: var(--recur); }
 .day[aria-pressed="true"] .dots i { background: #fff; }
 .cal-legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 10px; font-size: 12px; color: var(--muted); }
 .cal-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--accent-2); }
 .cal-legend i.done { background: var(--dim); }
 .cal-legend i.late { background: var(--neg); }
+.cal-legend i.recur { background: var(--recur); }
 .day-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin: 22px 4px 10px; }
 .day-title > span { white-space: nowrap; }
 .day-title h2 { font: 300 22px var(--f-display); }
@@ -226,6 +233,13 @@ dialog.sheet > form, dialog.sheet > div.inner { padding: 18px 18px calc(18px + e
 .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
 .quick button { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 999px; padding: 5px 12px; font-size: 13px; }
 .quick button:hover { color: var(--fg); border-color: var(--dim); }
+.quick.sel { margin-top: 0; }
+.quick.sel button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+.quick.sel.recur button[aria-pressed="true"]:not([data-r=""]) { border-color: var(--recur); background: var(--recur-soft); }
+.wdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.wdays button { aspect-ratio: 1 / 1; width: 100%; max-width: 42px; justify-self: center; border: 1px solid var(--line); background: var(--panel); border-radius: 50%; color: var(--muted); font-size: 13.5px; padding: 0; }
+.wdays button[aria-pressed="true"] { border-color: var(--recur); background: var(--recur-soft); color: var(--fg); }
+fieldset .hint { margin-top: 8px; }
 .choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .choice button {
   display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center;
@@ -249,6 +263,8 @@ input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: va
 /* Detail */
 .d-mode { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12.5px; background: var(--card2); color: var(--muted); }
 .d-mode.alarm { background: var(--accent-soft); color: var(--accent-2); }
+.d-mode.recur { background: var(--recur-soft); color: var(--recur); }
+.d-tags { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
 .d-title { font: 400 26px/1.2 var(--f-display); overflow-wrap: anywhere; }
 .d-when { color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .d-when .late { color: var(--neg); }
@@ -283,7 +299,7 @@ input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: va
 .ok { color: var(--pos); }
 
 /* Alarm screen */
-.alarm {
+.alarm-screen {
   position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; justify-content: space-between;
   padding: calc(env(safe-area-inset-top, 0px) + 40px) max(20px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 24px) max(20px, env(safe-area-inset-left, 0px));
   background: radial-gradient(120% 70% at 50% 18%, rgba(212, 98, 43, .38), transparent 60%), var(--bg);
@@ -292,15 +308,15 @@ input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: va
 .alarm-body { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 520px; margin: 0 auto; width: 100%; }
 .alarm-kicker { display: inline-flex; align-items: center; gap: 8px; color: var(--accent-2); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; }
 .alarm-time { font: 200 min(26vw, 120px)/1 var(--f-display); letter-spacing: -.02em; }
-.alarm.ringing .alarm-time { animation: ring 1.4s ease-in-out infinite; }
+.alarm-screen.ringing .alarm-time { animation: ring 1.4s ease-in-out infinite; }
 @keyframes ring { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.04); } 24% { transform: scale(1); } }
-.alarm h2 { font: 400 26px/1.2 var(--f-display); overflow-wrap: anywhere; }
+.alarm-screen h2 { font: 400 26px/1.2 var(--f-display); overflow-wrap: anywhere; }
 .alarm-desc { color: var(--muted); max-width: 40ch; overflow-wrap: anywhere; }
 .alarm-actions { display: flex; flex-direction: column; gap: 10px; max-width: 520px; margin: 0 auto; width: 100%; }
 .btn.big { padding: 18px; font-size: 18px; }
 .alarm-snooze { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .alarm-snooze button { padding: 14px 6px; font-size: 15px; }
-@media (prefers-reduced-motion: reduce) { .alarm.ringing .alarm-time, .icon.recording { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .alarm-screen.ringing .alarm-time, .icon.recording { animation: none; } }
 
 #toast {
   position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);

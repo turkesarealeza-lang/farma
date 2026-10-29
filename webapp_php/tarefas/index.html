@@ -94,6 +94,35 @@
       </fieldset>
 
       <fieldset>
+        <legend class="fld">Repetir</legend>
+        <div class="quick sel recur" id="f-recur" role="group" aria-label="Repetir">
+          <button type="button" data-r="" aria-pressed="true">Não repete</button>
+          <button type="button" data-r="daily" aria-pressed="false">Todo dia</button>
+          <button type="button" data-r="weekdays" aria-pressed="false">Dias úteis</button>
+          <button type="button" data-r="weekly" aria-pressed="false">Semanal</button>
+          <button type="button" data-r="monthly" aria-pressed="false">Mensal</button>
+        </div>
+        <div class="wdays" id="f-wdays" role="group" aria-label="Dias da semana" hidden>
+          <button type="button" data-wd="0" aria-label="Domingo">D</button><button type="button" data-wd="1" aria-label="Segunda">S</button>
+          <button type="button" data-wd="2" aria-label="Terça">T</button><button type="button" data-wd="3" aria-label="Quarta">Q</button>
+          <button type="button" data-wd="4" aria-label="Quinta">Q</button><button type="button" data-wd="5" aria-label="Sexta">S</button>
+          <button type="button" data-wd="6" aria-label="Sábado">S</button>
+        </div>
+        <p class="hint" id="f-recur-hint" hidden></p>
+      </fieldset>
+
+      <fieldset>
+        <legend class="fld">Avisar antes</legend>
+        <div class="quick sel" id="f-remind" role="group" aria-label="Avisar antes">
+          <button type="button" data-m="0" aria-pressed="true">Não</button>
+          <button type="button" data-m="5" aria-pressed="false">5 min</button>
+          <button type="button" data-m="15" aria-pressed="false">15 min</button>
+          <button type="button" data-m="30" aria-pressed="false">30 min</button>
+          <button type="button" data-m="60" aria-pressed="false">1 h</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend class="fld">Descrição</legend>
         <div class="seg small" id="f-desc-type" role="group" aria-label="Tipo de descrição">
           <button type="button" data-dt="text" aria-pressed="true">Texto</button>
@@ -155,7 +184,7 @@
   </dialog>
 
   <!-- Alarm screen -->
-  <div id="alarm" class="alarm" role="alertdialog" aria-modal="true" aria-labelledby="alarm-title" hidden>
+  <div id="alarm" class="alarm-screen" role="alertdialog" aria-modal="true" aria-labelledby="alarm-title" hidden>
     <div class="alarm-body">
       <p class="alarm-kicker"><span data-icon="alarm"></span>Alarme</p>
       <div class="alarm-time" id="alarm-time"></div>
