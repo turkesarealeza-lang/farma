@@ -1016,16 +1016,16 @@ document.addEventListener('click', async (e) => {
 
 // ---------- settings ----------
 
-/** Visual skin: "micro" (lilac on black, mono) or "label" (black on grey, Roboto). */
+/** Visual skin: "micro" (lilac on black, mono), "label" (black on grey, Roboto) or "tech" (datasheet, lime accent). */
 function applySkin(skin) {
   document.documentElement.dataset.skin = skin;
   pref.set('skin', skin);
   document.querySelectorAll('#skin-picker [data-skin]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.skin === skin)));
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = skin === 'label' ? '#dcdcdc' : '#111015';
+  if (meta) meta.content = { label: '#dcdcdc', tech: '#050505' }[skin] || '#111015';
 }
 $('#skin-picker').addEventListener('click', (e) => { const b = e.target.closest('[data-skin]'); if (b) applySkin(b.dataset.skin); });
-applySkin(pref.get('skin') === 'label' ? 'label' : 'micro');
+applySkin(['label', 'tech'].includes(pref.get('skin')) ? pref.get('skin') : 'micro');
 
 $('#open-settings').addEventListener('click', () => {
   $('#me-line').textContent = `${state.user.name} · ${state.user.email}`;

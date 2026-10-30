@@ -64,7 +64,7 @@ CHROME_JS = """
     Sound.unlock();
     loadTasks();
   });
-  applySkin('label');
+  applySkin('tech');
   document.getElementById('pv-reset').addEventListener('click', () => { window.__preview.reset(); state.highlight = null; loadTasks(); });
 })();
 """
@@ -73,7 +73,7 @@ TOOLBAR = """
 <div class="pv-bar" role="toolbar" aria-label="Controles da prévia">
   <strong>Prévia</strong>
   <span class="pv-group" id="pv-screen"><button data-v="app" aria-pressed="true">App</button><button data-v="login" aria-pressed="false">Login</button></span>
-  <span class="pv-group" id="pv-skin"><button data-v="label" aria-pressed="true">Etiqueta</button><button data-v="micro" aria-pressed="false">Micro</button></span>
+  <span class="pv-group" id="pv-skin"><button data-v="tech" aria-pressed="true">Técnico</button><button data-v="label" aria-pressed="false">Etiqueta</button><button data-v="micro" aria-pressed="false">Micro</button></span>
   <span class="pv-group" id="pv-notif" title="Estado das notificações"><button data-v="default" aria-pressed="true">🔔 Pedir</button><button data-v="granted" aria-pressed="false">Ativadas</button><button data-v="denied" aria-pressed="false">Bloqueadas</button></span>
   <button id="pv-alarm">Disparar alarme</button>
   <button id="pv-nag">Simular atraso</button>
@@ -82,7 +82,7 @@ TOOLBAR = """
 """
 
 html = f"""<title>Prévia do app Tarefas</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700;900&family=Barlow:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
 {(APP / "style.css").read_text()}
 {CHROME_CSS}
