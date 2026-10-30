@@ -120,8 +120,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   padding: 8px max(16px, env(safe-area-inset-right, 0px)) calc(110px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
 }
 .group { margin-top: 18px; }
-.group > h3 { display: flex; justify-content: space-between; padding: 0 4px 8px; }
-.group > h3 span { color: var(--dim); }
+.group > summary > h3 { display: flex; justify-content: space-between; padding: 0 4px 8px; }
+.group > summary > h3 .g-right { color: var(--dim); }
 .group.late > h3 { color: var(--neg); }
 .cards { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 
@@ -156,10 +156,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .empty { text-align: center; color: var(--muted); padding: 40px 16px; }
 .empty h2 { font: 300 26px var(--f-display); color: var(--fg); margin-bottom: 6px; }
 .empty .btn { margin-top: 16px; }
-details.done-group summary { list-style: none; cursor: pointer; }
-details.done-group summary::-webkit-details-marker { display: none; }
-details.done-group summary h3 { padding: 0 4px 8px; }
-details.done-group[open] summary .chev { transform: rotate(90deg); }
+details.group > summary { list-style: none; cursor: pointer; -webkit-user-select: none; user-select: none; }
+details.group > summary::-webkit-details-marker { display: none; }
+.g-right { display: inline-flex; align-items: center; gap: 8px; }
+.chev svg { transition: transform .15s; }
+details.group[open] > summary .chev svg { transform: rotate(90deg); }
+details.group:not([open]) > summary > h3 { margin-bottom: 0; }
 .chev { display: inline-block; transition: transform .15s; }
 
 /* Days view */
@@ -374,8 +376,8 @@ input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: va
 .sday small { letter-spacing: .03em; text-transform: uppercase; font-size: 10.5px; }
 .sday b { font: 500 21px/1 var(--f-display); }
 .sday small.mon { color: var(--fg); border-bottom: 1px solid var(--fg); }
-.group > h3 { align-items: baseline; }
-.group > h3 > span { font-variant-numeric: tabular-nums; }
+.group > summary > h3 { align-items: baseline; }
+.group > summary > h3 .g-right { font-variant-numeric: tabular-nums; }
 .t-time b { font: 600 19px/1 var(--f-display); }
 .t-time small { font-size: 10.5px; letter-spacing: .03em; text-transform: uppercase; }
 .t-title { font-weight: 600; }
@@ -488,10 +490,10 @@ input::placeholder, textarea::placeholder { text-transform: uppercase; }
 [data-skin="label"] .cal-head h2, [data-skin="label"] .day-title h2, [data-skin="label"] .sheet-head h2, [data-skin="label"] .empty h2, [data-skin="label"] .login h1 { font-weight: 900; letter-spacing: -.01em; }
 
 /* Section titles as inverted label strips */
-[data-skin="label"] .group > h3, [data-skin="label"] details.done-group summary h3 {
+[data-skin="label"] .group > summary > h3 {
   background: var(--fg); color: var(--on-accent); padding: 5px 9px; border-radius: 2px; margin-bottom: 8px; font-weight: 500;
 }
-[data-skin="label"] .group > h3 > span, [data-skin="label"] .group h3 .back { color: var(--on-accent); }
+[data-skin="label"] .group > summary > h3 .g-right, [data-skin="label"] .group h3 .back { color: var(--on-accent); }
 [data-skin="label"] .group.late > h3 { background: var(--fg); color: var(--on-accent); }
 
 /* Crisp label boxes */

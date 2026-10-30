@@ -324,6 +324,20 @@ function renderStrip() {
   }
 }
 
+/** Open/closed state of each list section, remembered per device. "Done" starts closed. */
+function groupOpen(key) {
+  try {
+    const st = JSON.parse(pref.get('groups') || '{}');
+    return key in st ? st[key] : key !== 'done';
+  } catch { return key !== 'done'; }
+}
+
+function groupBlock(key, cls, title, right, body) {
+  return `<details class="group ${cls}" data-g="${key}" ${groupOpen(key) ? 'open' : ''}>
+    <summary><h3><span class="g-title">${title}</span><span class="g-right">${right}<span class="chev" aria-hidden="true">${icon('right')}</span></span></h3></summary>
+    ${body}</details>`;
+}
+
 function renderList() {
   const now = nowS();
   const today = dayKey(now);
@@ -336,37 +350,36 @@ function renderList() {
   const dayTasks = (k) => (byDay[k] || []).filter((t) => !isLate(t));
   const others = (k) => sortDay(dayTasks(k).filter((t) => !isDailySeries(t)));
   const groups = [
-    ['late', 'Atrasadas', state.open.filter(isLate)],
-    ['recur-g', 'Diárias', sortDay(dayTasks(sel).filter(isDailySeries))],
+    ['late', 'late', 'Atrasadas', state.open.filter(isLate)],
+    ['daily', 'recur-g', 'Diárias', sortDay(dayTasks(sel).filter(isDailySeries))],
   ];
   let selGroup = '';
   if (sel === today) {
-    groups.push(['', 'Hoje', others(today)], ['', 'Amanhã', others(tomorrow).filter((t) => t.status !== 'done')]);
+    groups.push(['today', '', 'Hoje', others(today)], ['tomorrow', '', 'Amanhã', others(tomorrow).filter((t) => t.status !== 'done')]);
   } else {
     const list = others(sel);
     const rel = relDay(sel);
     const name = rel ? `${rel} · ${fmtLong(sel)}` : fmtLong(sel);
-    selGroup = `<section class="group"><h3><span style="color:var(--fg)">${name}</span><button class="back" data-today>Voltar para hoje</button></h3>
-      ${list.length ? `<div class="cards">${list.map(taskRow).join('')}</div>`
-        : `<div class="empty" style="padding:22px 16px"><p>Nenhuma tarefa neste dia.</p><button class="btn ghost" data-new-day="${sel}">${icon('plus')}Criar tarefa neste dia</button></div>`}
-    </section>`;
-    groups.push(['', 'Hoje', others(today)]);
+    selGroup = groupBlock('sel', '', `// ${name}`, '<button class="back" data-today>Voltar para hoje</button>',
+      list.length ? `<div class="cards">${list.map(taskRow).join('')}</div>`
+        : `<div class="empty" style="padding:22px 16px"><p>Nenhuma tarefa neste dia.</p><button class="btn ghost" data-new-day="${sel}">${icon('plus')}Criar tarefa neste dia</button></div>`);
+    groups.push(['today', '', 'Hoje', others(today)]);
   }
   let html = '';
-  if (!state.open.length && sel === today && !groups.some(([, , l]) => l.length)) {
+  if (!state.open.length && sel === today && !groups.some(([, , , l]) => l.length)) {
     html += `<div class="empty"><h2>Tudo em dia</h2><p>Nenhuma tarefa ativa. Toque em Nova tarefa e escolha se ela avisa com notificação ou toca como alarme.</p></div>`;
   }
-  groups.forEach(([cls, name, list], i) => {
+  groups.forEach(([key, cls, name, list], i) => {
     if (i === 2 && selGroup) html += selGroup;  // the picked day goes right after Atrasadas and Diárias
     const open = list.filter((t) => t.status !== 'done').length;
     const pad2 = (x) => String(x).padStart(2, '0');
     const count = open === list.length ? `[${pad2(list.length)}]` : `[${pad2(list.length - open)}/${pad2(list.length)}] feitas`;
-    if (list.length) html += `<section class="group ${cls}"><h3>${cls === 'late' ? '[!] ' : '// '}${name}<span>${count}</span></h3><div class="cards">${list.map(taskRow).join('')}</div></section>`;
+    if (list.length) html += groupBlock(key, cls, `${key === 'late' ? '[!] ' : '// '}${name}`, count, `<div class="cards">${list.map(taskRow).join('')}</div>`);
   });
   const recent = state.done.filter((t) => t.done_at > now - 7 * 86400);
   if (recent.length) {
-    html += `<details class="group done-group"><summary><h3><span class="chev">›</span> Concluídas nos últimos 7 dias · ${recent.length}</h3></summary>
-      <div class="cards">${recent.map(taskRow).join('')}</div></details>`;
+    html += groupBlock('done', 'done-group', '// Concluídas · 7 dias', `[${String(recent.length).padStart(2, '0')}]`,
+      `<div class="cards">${recent.map(taskRow).join('')}</div>`);
   }
   $('#view-list').innerHTML = html;
 }
@@ -438,6 +451,7 @@ document.addEventListener('click', (e) => {
   const sday = e.target.closest('[data-sday]');
   if (sday) { state.stripDay = sday.dataset.sday; renderStrip(); renderList(); return; }
   if (e.target.closest('[data-today]')) {
+    e.preventDefault();  // the button sits in a section title; don't fold the section
     state.stripDay = null;
     state.stripCentered = false;
     renderStrip();
@@ -457,6 +471,15 @@ document.addEventListener('click', (e) => {
   const close = e.target.closest('[data-close]');
   if (close) close.closest('dialog').close();
 });
+
+$('#view-list').addEventListener('toggle', (e) => {
+  const key = e.target.dataset?.g;
+  if (!key) return;
+  let st = {};
+  try { st = JSON.parse(pref.get('groups') || '{}'); } catch { /* start fresh */ }
+  st[key] = e.target.open;
+  pref.set('groups', JSON.stringify(st));
+}, true);
 
 $('#add-btn').addEventListener('click', () => openEditor(null, state.stripDay && state.view === 'list' ? { day: state.stripDay } : {}));
 
