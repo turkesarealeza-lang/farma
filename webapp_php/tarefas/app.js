@@ -5,6 +5,7 @@ const $ = (s) => document.querySelector(s);
 const state = {
   user: null, vapid: null, open: [], done: [], view: 'list', highlight: null,
   month: null, selDay: null, editId: null, detailId: null, confirmDelete: false,
+  stripDay: null, stripCentered: false,
   mode: 'push', descType: 'text', items: [], recur: '', wdays: [], remind: 0, alarm: null, silenced: {},
 };
 
@@ -110,9 +111,8 @@ const tomorrowLabel = (t) => fmtTime(t.base_at || t.due_at);
 
 function descPreview(t) {
   if (t.desc_type === 'checklist' && t.checklist.length) {
-    const done = t.checklist.filter((i) => i.done).length;
     const next = t.checklist.find((i) => !i.done);
-    return { text: next ? next.t : 'Tudo marcado', pill: `${done}/${t.checklist.length}`, full: done === t.checklist.length };
+    return { text: next ? next.t : 'Tudo marcado' };
   }
   const line = (t.notes || '').split('\n').map((s) => s.trim()).find(Boolean) || '';
   return { text: line };
@@ -215,6 +215,18 @@ function replaceTask(t) {
 
 // ---------- rendering ----------
 
+/** Checklist progress, e.g. 1 of 2 ticked = 50%. */
+function progressOf(t) {
+  if (t.desc_type !== 'checklist' || !t.checklist.length) return null;
+  const n = t.checklist.filter((i) => i.done).length;
+  return { n, total: t.checklist.length, pct: Math.round((n / t.checklist.length) * 100) };
+}
+
+function progressBar(t) {
+  const p = progressOf(t);
+  return p ? `<div class="mini" aria-label="${p.n} de ${p.total} itens, ${p.pct}%"><div class="bar"><span style="width:${p.pct}%"></span></div><b>${p.pct}%</b></div>` : '';
+}
+
 function taskRow(t) {
   if (t.virtual) {  // a future occurrence of a recurring task, projected on the calendar
     return `<button class="task virtual" data-id="${t.id}">
@@ -228,8 +240,8 @@ function taskRow(t) {
   const when = t.status === 'done' ? fmtShort(t.done_at) : fmtShort(t.due_at);
   return `<button class="task ${late ? 'late' : ''} ${t.status === 'done' ? 'done' : ''} ${state.highlight === t.id ? 'highlight' : ''}" data-id="${t.id}">
     <div class="t-time"><b>${fmtTime(t.status === 'done' ? t.done_at : t.due_at)}</b><small>${late ? 'atrasada' : when}</small></div>
-    <div class="t-main"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(d.text)}</div></div>
-    <div class="t-meta">${t.recur && t.status !== 'done' ? `<span class="pill recur">${icon('repeat')}${RECUR_SHORT[t.recur]}</span>` : ''}${d.pill ? `<span class="pill ${d.full ? 'full' : ''}">${icon('checklist')}${d.pill}</span>` : ''}${t.mode === 'alarm' ? icon('alarm', 'alarm-ic') : icon('bell')}</div>
+    <div class="t-main"><div class="t-title">${esc(t.title)}</div><div class="t-desc">${esc(d.text)}</div>${progressBar(t)}</div>
+    <div class="t-meta">${t.recur && t.status !== 'done' ? `<span class="pill recur">${icon('repeat')}${RECUR_SHORT[t.recur]}</span>` : ''}${t.mode === 'alarm' ? icon('alarm', 'alarm-ic') : icon('bell')}</div>
   </button>`;
 }
 
@@ -241,27 +253,100 @@ function renderHeader() {
   $('#today-sub').textContent = n
     ? `${n} ${n === 1 ? 'tarefa ativa' : 'tarefas ativas'}${late ? ` · ${late} ${late === 1 ? 'atrasada' : 'atrasadas'}` : ''}`
     : 'Nenhuma tarefa ativa';
-  document.querySelectorAll('.seg [data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
+  document.querySelectorAll('#view-nav [data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
+  $('#strip').hidden = state.view !== 'list';
   $('#view-list').hidden = state.view !== 'list';
   $('#view-days').hidden = state.view !== 'days';
+}
+
+/** Tasks per day between two day keys, including projected future occurrences of recurring tasks. */
+function tasksByDay(from, to) {
+  const today = dayKey(nowS());
+  const byDay = {};
+  allTasks().forEach((t) => {
+    const k = dayKey(t.due_at);
+    if (k >= from && k <= to) (byDay[k] ||= []).push(t);
+  });
+  state.open.filter((t) => t.recur).forEach((t) => {
+    const start = dayKey(t.due_at) > today ? dayKey(t.due_at) : today;
+    for (let k = from; k <= to; k = shiftKey(k, 1)) {
+      if (k > start && recursOn(t, k)) (byDay[k] ||= []).push({ ...t, virtual: true, due_at: atKey(k, t.base_at) });
+    }
+  });
+  return byDay;
+}
+
+/** Dot colour for a day: late beats active, active beats recurring, recurring beats done. */
+function dayDot(list, now) {
+  const open = list.filter((t) => t.status !== 'done');
+  if (open.some((t) => t.due_at <= now)) return 'late';
+  if (open.some((t) => !t.recur)) return 'on';
+  if (open.length) return 'recur';
+  return list.length ? 'done' : 'none';
+}
+
+function renderStrip() {
+  const el = $('#strip');
+  const now = nowS();
+  const today = dayKey(now);
+  const from = shiftKey(today, -7);
+  const to = shiftKey(today, 60);
+  const byDay = tasksByDay(from, to);
+  const sel = state.stripDay || today;
+  let html = '';
+  for (let k = from; k <= to; k = shiftKey(k, 1)) {
+    const list = byDay[k] || [];
+    const d = keyToDate(k).getUTCDate();
+    const wd = WD_SHORT[keyToDate(k).getUTCDay()];
+    // On the 1st, the month name replaces the weekday so the carousel shows where months change.
+    const top = d === 1
+      ? `<small class="mon">${new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', month: 'short' }).format(keyToDate(k)).replace('.', '')}</small>`
+      : `<small>${wd[0].toUpperCase() + wd.slice(1)}</small>`;
+    const label = `${fmtLong(k)}${list.length ? `, ${list.length} ${list.length === 1 ? 'tarefa' : 'tarefas'}` : ', sem tarefas'}`;
+    html += `<button class="sday ${k === today ? 'today' : ''} ${k < today ? 'past' : ''}" data-sday="${k}" aria-pressed="${k === sel}" aria-label="${label}">
+      <i class="sdot ${dayDot(list, now)}"></i>${top}<b>${d}</b></button>`;
+  }
+  el.innerHTML = html;
+  if (!state.stripCentered && !el.hidden) {  // start with the selected day in view
+    const btn = el.querySelector('[aria-pressed="true"]');
+    if (btn && el.clientWidth) { el.scrollLeft = btn.offsetLeft - 16 - btn.offsetWidth * 2; state.stripCentered = true; }
+  }
 }
 
 function renderList() {
   const now = nowS();
   const today = dayKey(now);
   const tomorrow = shiftKey(today, 1);
+  const sel = state.stripDay || today;
+  const isDaily = (t) => t.recur === 'daily';
+  const upcoming = state.open.filter((t) => t.due_at > now);
+  const onDay = (k) => upcoming.filter((t) => !isDaily(t) && dayKey(t.due_at) === k);
   const groups = [
     ['late', 'Atrasadas', state.open.filter((t) => t.due_at <= now)],
-    ['', 'Hoje', state.open.filter((t) => t.due_at > now && dayKey(t.due_at) === today)],
-    ['', 'Amanhã', state.open.filter((t) => dayKey(t.due_at) === tomorrow)],
-    ['', 'Próximos dias', state.open.filter((t) => dayKey(t.due_at) > tomorrow)],
+    ['recur-g', 'Diárias', upcoming.filter(isDaily)],
   ];
-  let html = '';
-  if (!state.open.length) {
-    html += `<div class="empty"><h2>Tudo em dia</h2><p>Nenhuma tarefa ativa. Crie uma e escolha se ela avisa com notificação ou toca como alarme.</p>
-      <button class="btn" data-new>${icon('plus')}Nova tarefa</button></div>`;
+  let selGroup = '';
+  if (sel === today) {
+    groups.push(['', 'Hoje', onDay(today)], ['', 'Amanhã', onDay(tomorrow)]);
+  } else {
+    // The day picked in the carousel: its tasks (done ones too), minus what the groups above already show.
+    const list = (tasksByDay(sel, sel)[sel] || [])
+      .filter((t) => !(t.status !== 'done' && t.due_at <= now) && !(isDaily(t) && t.status !== 'done'))
+      .sort((a, b) => (a.status === 'done') - (b.status === 'done') || a.due_at - b.due_at);
+    const rel = relDay(sel);
+    const name = rel ? `${rel} · ${fmtLong(sel)}` : fmtLong(sel);
+    selGroup = `<section class="group"><h3><span style="color:var(--fg)">${name}</span><button class="back" data-today>Voltar para hoje</button></h3>
+      ${list.length ? `<div class="cards">${list.map(taskRow).join('')}</div>`
+        : `<div class="empty" style="padding:22px 16px"><p>Nenhuma tarefa neste dia.</p><button class="btn ghost" data-new-day="${sel}">${icon('plus')}Criar tarefa neste dia</button></div>`}
+    </section>`;
+    groups.push(['', 'Hoje', onDay(today)]);
   }
-  groups.forEach(([cls, name, list]) => {
+  let html = '';
+  if (!state.open.length && sel === today) {
+    html += `<div class="empty"><h2>Tudo em dia</h2><p>Nenhuma tarefa ativa. Toque em Nova tarefa e escolha se ela avisa com notificação ou toca como alarme.</p></div>`;
+  }
+  groups.forEach(([cls, name, list], i) => {
+    if (i === 2 && selGroup) html += selGroup;  // the picked day goes right after Atrasadas and Diárias
     if (list.length) html += `<section class="group ${cls}"><h3>${name}<span>${list.length}</span></h3><div class="cards">${list.map(taskRow).join('')}</div></section>`;
   });
   const recent = state.done.filter((t) => t.done_at > now - 7 * 86400);
@@ -279,18 +364,7 @@ function renderDays() {
   const [y, m] = state.month.split('-').map(Number);
   const first = new Date(Date.UTC(y, m - 1, 1));
   const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const byDay = {};
-  allTasks().forEach((t) => {
-    (byDay[dayKey(t.due_at)] ||= []).push(t);
-  });
-  // Future occurrences of recurring tasks in the month shown.
-  state.open.filter((t) => t.recur).forEach((t) => {
-    const from = dayKey(t.due_at) > today ? dayKey(t.due_at) : today;
-    for (let d = 1; d <= daysIn; d++) {
-      const k = `${state.month}-${String(d).padStart(2, '0')}`;
-      if (k > from && recursOn(t, k)) (byDay[k] ||= []).push({ ...t, virtual: true, due_at: atKey(k, t.base_at) });
-    }
-  });
+  const byDay = tasksByDay(`${state.month}-01`, `${state.month}-${String(daysIn).padStart(2, '0')}`);
   const now = nowS();
   let cells = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d) => `<div class="cal-wd" aria-hidden="true">${d}</div>`).join('');
   for (let i = 0; i < first.getUTCDay(); i++) cells += '<span class="day out"></span>';
@@ -323,7 +397,7 @@ function renderDays() {
 
 function render() {
   renderHeader();
-  if (state.view === 'list') renderList(); else renderDays();
+  if (state.view === 'list') { renderStrip(); renderList(); } else renderDays();
   if (state.highlight) {
     document.querySelector(`.task[data-id="${state.highlight}"]`)?.scrollIntoView({ block: 'center' });
     setTimeout(() => { state.highlight = null; }, 2500);
@@ -333,7 +407,7 @@ function render() {
 
 // ---------- navigation ----------
 
-document.querySelector('.seg').addEventListener('click', (e) => {
+$('#view-nav').addEventListener('click', (e) => {
   const b = e.target.closest('[data-view]');
   if (!b) return;
   state.view = b.dataset.view;
@@ -347,6 +421,15 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('[data-new]')) { openEditor(); return; }
   const nd = e.target.closest('[data-new-day]');
   if (nd) { openEditor(null, { day: nd.dataset.newDay }); return; }
+  const sday = e.target.closest('[data-sday]');
+  if (sday) { state.stripDay = sday.dataset.sday; renderStrip(); renderList(); return; }
+  if (e.target.closest('[data-today]')) {
+    state.stripDay = null;
+    state.stripCentered = false;
+    renderStrip();
+    renderList();
+    return;
+  }
   const day = e.target.closest('[data-day]');
   if (day) { state.selDay = day.dataset.day; renderDays(); return; }
   const mon = e.target.closest('[data-month]');
@@ -361,7 +444,7 @@ document.addEventListener('click', (e) => {
   if (close) close.closest('dialog').close();
 });
 
-$('#add-btn').addEventListener('click', () => openEditor());
+$('#add-btn').addEventListener('click', () => openEditor(null, state.stripDay && state.view === 'list' ? { day: state.stripDay } : {}));
 
 // ---------- detail ----------
 
@@ -382,7 +465,8 @@ function renderDetail() {
   let desc = '';
   if (t.desc_type === 'checklist' && t.checklist.length) {
     const n = t.checklist.filter((i) => i.done).length;
-    desc = `<div class="progress"><span>${n} de ${t.checklist.length}</span><div class="bar"><span style="width:${(n / t.checklist.length) * 100}%"></span></div></div>
+    const pct = progressOf(t).pct;
+    desc = `<div class="progress"><span>${n} de ${t.checklist.length}</span><div class="bar"><span style="width:${pct}%"></span></div><b>${pct}%</b></div>
       <ul class="checks">${t.checklist.map((it, i) => `<li><label><input type="checkbox" data-check="${i}" ${it.done ? 'checked' : ''} ${done ? 'disabled' : ''}><span>${esc(it.t)}</span></label></li>`).join('')}</ul>`;
   } else if (t.notes) {
     desc = `<div class="d-notes">${linkify(esc(t.notes))}</div>`;

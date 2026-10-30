@@ -42,17 +42,20 @@
       </div>
       <h1 id="today-title"></h1>
       <p class="muted" id="today-sub"></p>
-      <div class="seg" role="group" aria-label="Visualização">
-        <button data-view="list" aria-pressed="true"><span data-icon="list"></span>Lista</button>
-        <button data-view="days" aria-pressed="false"><span data-icon="calendar"></span>Dias</button>
-      </div>
+      <button class="add-big" id="add-btn">Nova tarefa<span data-icon="plus"></span></button>
+      <div class="strip" id="strip" role="group" aria-label="Escolher dia"></div>
     </header>
 
     <div id="banner"></div>
     <main id="view-list" class="view"></main>
     <main id="view-days" class="view" hidden></main>
 
-    <button class="fab" id="add-btn"><span data-icon="plus"></span>Nova tarefa</button>
+    <nav class="bottom-nav" aria-label="Visualização">
+      <div class="seg" id="view-nav" role="group">
+        <button data-view="list" aria-pressed="true"><span data-icon="list"></span>Lista</button>
+        <button data-view="days" aria-pressed="false"><span data-icon="calendar"></span>Dias</button>
+      </div>
+    </nav>
   </div>
 
   <!-- Task detail -->
