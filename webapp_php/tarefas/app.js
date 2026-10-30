@@ -224,7 +224,7 @@ function progressOf(t) {
 
 function progressBar(t) {
   const p = progressOf(t);
-  return p ? `<div class="mini" aria-label="${p.n} de ${p.total} itens, ${p.pct}%"><div class="bar"><span style="width:${p.pct}%"></span></div><b>${p.pct}%</b></div>` : '';
+  return p ? `<div class="mini" aria-label="${p.n} de ${p.total} itens, ${p.pct}%"><div class="bar"><span style="width:${p.pct}%"></span></div><b>${String(p.pct).padStart(3, '0')}%</b></div>` : '';
 }
 
 function taskRow(t) {
@@ -247,12 +247,14 @@ function taskRow(t) {
 
 function renderHeader() {
   const today = dayKey(nowS());
-  $('#today-title').textContent = fmtLong(today);
+  const [y, m, d] = today.split('-');
+  const wd = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', weekday: 'long' }).format(keyToDate(today));
+  const mon = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', month: 'short' }).format(keyToDate(today)).replace('.', '');
+  $('#today-title').innerHTML = `<small>${esc(wd)} // ${d}.${m}.${y}</small>${d} ${esc(mon)} ${y}`;
   const late = state.open.filter((t) => t.due_at <= nowS()).length;
   const n = state.open.length;
-  $('#today-sub').textContent = n
-    ? `${n} ${n === 1 ? 'tarefa ativa' : 'tarefas ativas'}${late ? ` · ${late} ${late === 1 ? 'atrasada' : 'atrasadas'}` : ''}`
-    : 'Nenhuma tarefa ativa';
+  const pad2 = (x) => String(x).padStart(2, '0');
+  $('#today-sub').textContent = n ? `Ativas: ${pad2(n)} // Atrasadas: ${pad2(late)}` : 'Ativas: 00 // Tudo em dia';
   document.querySelectorAll('#view-nav [data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
   $('#strip').hidden = state.view !== 'list';
   $('#view-list').hidden = state.view !== 'list';
@@ -357,8 +359,9 @@ function renderList() {
   groups.forEach(([cls, name, list], i) => {
     if (i === 2 && selGroup) html += selGroup;  // the picked day goes right after Atrasadas and Diárias
     const open = list.filter((t) => t.status !== 'done').length;
-    const count = open === list.length ? `${list.length}` : `${list.length - open}/${list.length} feitas`;
-    if (list.length) html += `<section class="group ${cls}"><h3>${name}<span>${count}</span></h3><div class="cards">${list.map(taskRow).join('')}</div></section>`;
+    const pad2 = (x) => String(x).padStart(2, '0');
+    const count = open === list.length ? `[${pad2(list.length)}]` : `[${pad2(list.length - open)}/${pad2(list.length)}] feitas`;
+    if (list.length) html += `<section class="group ${cls}"><h3>${cls === 'late' ? '[!] ' : '// '}${name}<span>${count}</span></h3><div class="cards">${list.map(taskRow).join('')}</div></section>`;
   });
   const recent = state.done.filter((t) => t.done_at > now - 7 * 86400);
   if (recent.length) {
@@ -477,7 +480,7 @@ function renderDetail() {
   if (t.desc_type === 'checklist' && t.checklist.length) {
     const n = t.checklist.filter((i) => i.done).length;
     const pct = progressOf(t).pct;
-    desc = `<div class="progress"><span>${n} de ${t.checklist.length}</span><div class="bar"><span style="width:${pct}%"></span></div><b>${pct}%</b></div>
+    desc = `<div class="progress"><span>${n}/${t.checklist.length} itens</span><div class="bar"><span style="width:${pct}%"></span></div><b>${String(pct).padStart(3, '0')}%</b></div>
       <ul class="checks">${t.checklist.map((it, i) => `<li><label><input type="checkbox" data-check="${i}" ${it.done ? 'checked' : ''} ${done ? 'disabled' : ''}><span>${esc(it.t)}</span></label></li>`).join('')}</ul>`;
   } else if (t.notes) {
     desc = `<div class="d-notes">${linkify(esc(t.notes))}</div>`;
@@ -504,6 +507,7 @@ function renderDetail() {
       </div>
       <button class="icon" data-close aria-label="Fechar">${icon('x')}</button>
     </div>
+    <p class="d-id">ID: T-${String(t.id).padStart(4, '0')}${t.recur ? ' // série' : ''}</p>
     <h2 class="d-title">${esc(t.title)}</h2>
     <p class="d-when">${icon('clock')}${rel ? rel + ', ' : ''}${fmtLong(k)} · ${fmtTime(t.due_at)}
       ${done ? `<span class="ok">· concluída ${fmtShort(t.done_at)} ${fmtTime(t.done_at)}</span>` : late ? `<span class="late">· ${lateText(t.due_at)}</span>` : ''}</p>

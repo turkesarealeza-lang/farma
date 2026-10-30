@@ -25,7 +25,7 @@ body { display: flex; flex-direction: column; align-items: center; gap: 14px;
 .pv-group button[aria-pressed="true"] { background: var(--primary); color: var(--primary-text); }
 .pv-bar > button { padding: 6px 12px; font-size: .82rem; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px; }
 .pv-phone { position: relative; transform: translateZ(0); width: 390px; height: min(800px, calc(100dvh - 120px)); min-height: 560px; flex: none;
-  border: 10px solid #2a2826; border-radius: 44px; overflow: hidden; background: var(--bg);
+  border: 10px solid #23212c; border-radius: 44px; overflow: hidden; background: var(--bg);
   box-shadow: 0 20px 50px rgb(0 0 0 / .18); }
 .pv-screen { height: 100%; overflow-y: auto; overscroll-behavior: contain; }
 .pv-screen .top { padding-top: 14px; }
@@ -79,7 +79,7 @@ TOOLBAR = """
 """
 
 html = f"""<title>Prévia do app Tarefas</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500&family=Figtree:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
 <style>
 {(APP / "style.css").read_text()}
 {CHROME_CSS}
