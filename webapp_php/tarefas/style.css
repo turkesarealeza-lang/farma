@@ -520,3 +520,11 @@ input::placeholder, textarea::placeholder { text-transform: uppercase; }
 [data-skin="label"] .task { grid-template-columns: 78px minmax(0, 1fr) auto; }
 [data-skin="label"] .task.late .t-time small { font-size: 10px; letter-spacing: 0; }
 [data-skin="label"] .alarm-screen { background: var(--bg); }
+/* Etiqueta: rounder cards, solid black add button, header reduced to the tag and barcode */
+[data-skin="label"] .cards, [data-skin="label"] .cal, [data-skin="label"] .checks, [data-skin="label"] .d-notes { border-radius: 15px; }
+[data-skin="label"] .add-big { border-radius: 15px; background: var(--fg); color: var(--on-accent); border-color: var(--fg); }
+[data-skin="label"] .add-big svg { color: var(--on-accent); }
+[data-skin="label"] .add-big:hover { background: #2e2e2e; }
+[data-skin="label"] .brand-mark, [data-skin="label"] .brand-name { display: none; }
+[data-skin="label"] .brand { flex: none; }
+[data-skin="label"] .top-row .barcode { margin-right: auto; }
