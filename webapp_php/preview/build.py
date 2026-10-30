@@ -79,7 +79,7 @@ TOOLBAR = """
 """
 
 html = f"""<title>Prévia do app Tarefas</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap">
 <style>
 {(APP / "style.css").read_text()}
 {CHROME_CSS}

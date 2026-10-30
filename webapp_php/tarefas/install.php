@@ -7,7 +7,7 @@ function page(string $body): never
 {
     echo '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
         . '<meta name="robots" content="noindex"><title>Instalar Tarefas</title><style>'
-        . 'body{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;max-width:640px;margin:32px auto;padding:0 16px;line-height:1.5;color:#cbc1fb;background:#111015}'
+        . 'body{font-family:"Roboto Mono",ui-monospace,Menlo,monospace;max-width:640px;margin:32px auto;padding:0 16px;line-height:1.5;color:#cbc1fb;background:#111015}'
         . 'input{width:100%;padding:10px;font-size:16px;box-sizing:border-box;margin:4px 0 16px;background:#16151c;color:#cbc1fb;border:1px solid rgba(190,178,246,.2);border-radius:10px}'
         . 'button,.btn{display:inline-block;padding:12px 20px;font-size:16px;background:#b9adf2;color:#111015;border:0;border-radius:999px;cursor:pointer;text-decoration:none;font-weight:600}'
         . '.ok{color:#7fcf9b}.err{color:#f06f7a;background:rgba(240,111,122,.12);padding:10px;border-radius:10px}'
