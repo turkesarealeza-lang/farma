@@ -76,7 +76,8 @@
   const find = (id) => db.tasks.find((t) => t.id === Number(id));
   const tomorrowSame = (t) => { const b = new Date((t.base_at || t.due_at) * 1000); const d = new Date(Math.max(Date.now(), t.due_at * 1000)); d.setDate(d.getDate() + 1); d.setHours(b.getHours(), b.getMinutes(), 0, 0); return Math.floor(d / 1000); };
   function nextOcc(t) {  // same rule as next_occurrence() on the server
-    const b = new Date(t.base_at * 1000), after = Math.max(t.base_at, now());
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const b = new Date(t.base_at * 1000), after = Math.max(t.base_at, Math.floor(start / 1000) - 1);
     const d = new Date(after * 1000);
     for (let i = 0; i < 400; i++, d.setDate(d.getDate() + 1)) {
       const c = new Date(d); c.setHours(b.getHours(), b.getMinutes(), 0, 0);
@@ -131,12 +132,12 @@
         if (!t) return json({ error: 'Tarefa não encontrada.' }, 404);
         if (body.action === 'done' && !t.recur) Object.assign(t, { status: 'done', done_at: now() });
         if ((body.action === 'done' || body.action === 'skip') && t.recur) {
-          if (body.action === 'done') db.tasks.push(T({ ...t, id: db.nextId++, recur: '', status: 'done', done_at: now(), checklist: t.checklist.map((i) => ({ ...i })) }));
+          if (body.action === 'done') db.tasks.push(T({ ...t, id: db.nextId++, recur: '', series_id: t.id, status: 'done', done_at: now(), checklist: t.checklist.map((i) => ({ ...i })) }));
           t.due_at = nextOcc(t); t.base_at = t.due_at; t.status = 'scheduled'; t.nag_count = 0;
           t.checklist = t.checklist.map((i) => ({ ...i, done: false }));
         }
         if (body.action === 'delete') db.tasks = db.tasks.filter((x) => x !== t);
-        if (body.action === 'reopen') Object.assign(t, { status: 'scheduled', done_at: null, nag_count: 0, due_at: Math.max(t.due_at, now() + 300) });
+        if (body.action === 'reopen') Object.assign(t, { series_id: null, status: 'scheduled', done_at: null, nag_count: 0, due_at: Math.max(t.due_at, now() + 300) });
         if (body.action === 'snooze') {
           if (body.until === 'tomorrow') { t.due_at = tomorrowSame(t); if (!t.recur) t.base_at = t.due_at; } else t.due_at = now() + (body.minutes || 5) * 60;
           t.status = 'scheduled';

@@ -259,12 +259,21 @@ function renderHeader() {
   $('#view-days').hidden = state.view !== 'days';
 }
 
+/** The day a task belongs to. A task done late shows as done on the day it was done. */
+const taskDay = (t) => dayKey(t.status === 'done' && t.done_at > t.due_at ? t.done_at : t.due_at);
+
+/** Daily tasks, including the done copies their occurrences leave behind. */
+function isDailySeries(t) {
+  if (t.recur === 'daily') return true;
+  return !!t.series_id && state.open.some((s) => s.id === t.series_id && s.recur === 'daily');
+}
+
 /** Tasks per day between two day keys, including projected future occurrences of recurring tasks. */
 function tasksByDay(from, to) {
   const today = dayKey(nowS());
   const byDay = {};
   allTasks().forEach((t) => {
-    const k = dayKey(t.due_at);
+    const k = taskDay(t);
     if (k >= from && k <= to) (byDay[k] ||= []).push(t);
   });
   state.open.filter((t) => t.recur).forEach((t) => {
@@ -318,36 +327,38 @@ function renderList() {
   const today = dayKey(now);
   const tomorrow = shiftKey(today, 1);
   const sel = state.stripDay || today;
-  const isDaily = (t) => t.recur === 'daily';
-  const upcoming = state.open.filter((t) => t.due_at > now);
-  const onDay = (k) => upcoming.filter((t) => !isDaily(t) && dayKey(t.due_at) === k);
+  const isLate = (t) => t.status !== 'done' && !t.virtual && t.due_at <= now;
+  const byDay = tasksByDay(sel < today ? sel : today, sel > tomorrow ? sel : tomorrow);
+  // A day shows only its own occurrences: done ones stay there crossed out, at the bottom.
+  const sortDay = (list) => list.sort((a, b) => (a.status === 'done') - (b.status === 'done') || a.due_at - b.due_at);
+  const dayTasks = (k) => (byDay[k] || []).filter((t) => !isLate(t));
+  const others = (k) => sortDay(dayTasks(k).filter((t) => !isDailySeries(t)));
   const groups = [
-    ['late', 'Atrasadas', state.open.filter((t) => t.due_at <= now)],
-    ['recur-g', 'Diárias', upcoming.filter(isDaily)],
+    ['late', 'Atrasadas', state.open.filter(isLate)],
+    ['recur-g', 'Diárias', sortDay(dayTasks(sel).filter(isDailySeries))],
   ];
   let selGroup = '';
   if (sel === today) {
-    groups.push(['', 'Hoje', onDay(today)], ['', 'Amanhã', onDay(tomorrow)]);
+    groups.push(['', 'Hoje', others(today)], ['', 'Amanhã', others(tomorrow).filter((t) => t.status !== 'done')]);
   } else {
-    // The day picked in the carousel: its tasks (done ones too), minus what the groups above already show.
-    const list = (tasksByDay(sel, sel)[sel] || [])
-      .filter((t) => !(t.status !== 'done' && t.due_at <= now) && !(isDaily(t) && t.status !== 'done'))
-      .sort((a, b) => (a.status === 'done') - (b.status === 'done') || a.due_at - b.due_at);
+    const list = others(sel);
     const rel = relDay(sel);
     const name = rel ? `${rel} · ${fmtLong(sel)}` : fmtLong(sel);
     selGroup = `<section class="group"><h3><span style="color:var(--fg)">${name}</span><button class="back" data-today>Voltar para hoje</button></h3>
       ${list.length ? `<div class="cards">${list.map(taskRow).join('')}</div>`
         : `<div class="empty" style="padding:22px 16px"><p>Nenhuma tarefa neste dia.</p><button class="btn ghost" data-new-day="${sel}">${icon('plus')}Criar tarefa neste dia</button></div>`}
     </section>`;
-    groups.push(['', 'Hoje', onDay(today)]);
+    groups.push(['', 'Hoje', others(today)]);
   }
   let html = '';
-  if (!state.open.length && sel === today) {
+  if (!state.open.length && sel === today && !groups.some(([, , l]) => l.length)) {
     html += `<div class="empty"><h2>Tudo em dia</h2><p>Nenhuma tarefa ativa. Toque em Nova tarefa e escolha se ela avisa com notificação ou toca como alarme.</p></div>`;
   }
   groups.forEach(([cls, name, list], i) => {
     if (i === 2 && selGroup) html += selGroup;  // the picked day goes right after Atrasadas and Diárias
-    if (list.length) html += `<section class="group ${cls}"><h3>${name}<span>${list.length}</span></h3><div class="cards">${list.map(taskRow).join('')}</div></section>`;
+    const open = list.filter((t) => t.status !== 'done').length;
+    const count = open === list.length ? `${list.length}` : `${list.length - open}/${list.length} feitas`;
+    if (list.length) html += `<section class="group ${cls}"><h3>${name}<span>${count}</span></h3><div class="cards">${list.map(taskRow).join('')}</div></section>`;
   });
   const recent = state.done.filter((t) => t.done_at > now - 7 * 86400);
   if (recent.length) {

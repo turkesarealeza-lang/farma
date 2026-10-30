@@ -129,7 +129,7 @@ try {
                     q('DELETE FROM tasks WHERE id = ?', [$id]);
                     out(['ok' => true]);
                 case 'reopen':
-                    q("UPDATE tasks SET status = 'scheduled', done_at = NULL, last_nag_at = NULL, nag_count = 0,
+                    q("UPDATE tasks SET status = 'scheduled', done_at = NULL, last_nag_at = NULL, nag_count = 0, series_id = NULL,
                        due_at = MAX(due_at, ?) WHERE id = ? AND status = 'done'", [time() + 300, $id]);
                     break;
                 case 'snooze':

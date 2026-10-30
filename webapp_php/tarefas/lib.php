@@ -123,6 +123,7 @@ function db(): PDO
             'recur_days' => "TEXT NOT NULL DEFAULT ''",      // weekly: weekdays 0-6 (0 = Sunday); monthly: day of month
             'remind_before' => 'INTEGER NOT NULL DEFAULT 0',  // minutes of advance notice, 0 = none
             'pre_sent_for' => 'INTEGER',                     // due_at whose advance notice was already sent
+            'series_id' => 'INTEGER',                        // done copy of a recurring task: id of its series
         ];
         foreach ($new as $col => $def) {
             if (!in_array($col, $cols, true)) {
@@ -313,6 +314,7 @@ function task_json(array $t): array
         'base_at' => (int)($t['base_at'] ?? $t['due_at']), 'recur' => $t['recur'],
         'recur_days' => $t['recur_days'] === '' ? [] : array_map('intval', explode(',', $t['recur_days'])),
         'remind_before' => (int)$t['remind_before'],
+        'series_id' => $t['series_id'] === null ? null : (int)$t['series_id'],
     ];
 }
 
@@ -364,16 +366,19 @@ function complete_task(array $t): void
         q("UPDATE tasks SET status = 'done', done_at = ? WHERE id = ? AND status IN ('scheduled', 'nagging')", [time(), $t['id']]);
         return;
     }
-    q("INSERT INTO tasks (user_id, text, due_at, base_at, status, nag_count, created_at, done_at, mode, desc_type, notes, checklist)
-       VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?)",
-        [$t['user_id'], $t['text'], $t['due_at'], $t['due_at'], $t['nag_count'], time(), time(), $t['mode'], $t['desc_type'], $t['notes'], $t['checklist']]);
+    q("INSERT INTO tasks (user_id, text, due_at, base_at, status, nag_count, created_at, done_at, mode, desc_type, notes, checklist, series_id)
+       VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?)",
+        [$t['user_id'], $t['text'], $t['due_at'], $t['due_at'], $t['nag_count'], time(), time(), $t['mode'], $t['desc_type'], $t['notes'], $t['checklist'], $t['id']]);
     advance_recurring($t);
 }
 
-/** Moves a recurring task to its next occurrence (after completing or skipping this one). */
+/**
+ * Moves a recurring task to its next occurrence (after completing or skipping this one). Closing a
+ * missed occurrence from an earlier day lands on today's, so today's is never skipped by accident.
+ */
 function advance_recurring(array $t): void
 {
-    $next = next_occurrence($t, max((int)($t['base_at'] ?? $t['due_at']), time()));
+    $next = next_occurrence($t, max((int)($t['base_at'] ?? $t['due_at']), strtotime('today') - 1));
     $items = array_map(fn($i) => ['t' => $i['t'], 'done' => false], json_decode($t['checklist'], true) ?: []);
     q("UPDATE tasks SET due_at = ?, base_at = ?, status = 'scheduled', last_nag_at = NULL, nag_count = 0, checklist = ? WHERE id = ?",
         [$next, $next, json_encode($items, JSON_UNESCAPED_UNICODE), $t['id']]);
