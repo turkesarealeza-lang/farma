@@ -113,15 +113,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   color: var(--accent-2); border-radius: 999px; padding: 4px 10px; font-size: 12.5px;
 }
 
-#banner:empty { display: none; }
-.banner {
-  max-width: 608px; margin: 10px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
-  background: var(--hatch), var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; font-size: 13px;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-}
-@media (min-width: 640px) { .banner { margin-left: auto; margin-right: auto; } }
-.banner p { flex: 1 1 220px; }
-.banner .btn { padding: 7px 14px; font-size: 13.5px; }
 
 /* Views */
 .view {

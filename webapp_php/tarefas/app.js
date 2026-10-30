@@ -958,16 +958,12 @@ async function subscribe() {
 async function refreshNotifications() {
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   let html;
-  let banner = '';
   if (isIOS && !isStandalone) {
     html = `<p>No iPhone, as notificações só funcionam com o app instalado: no <b>Safari</b>, toque em <b>Compartilhar</b>, depois em <b>Adicionar à Tela de Início</b>, e abra pelo ícone.</p>`;
-    banner = `<div class="banner"><p>Para receber lembretes e alarmes, instale o app: <b>Compartilhar → Adicionar à Tela de Início</b>.</p></div>`;
   } else if (!supported) {
     html = '<p>Este navegador não recebe notificações. Use o Chrome no Android ou o Safari no iPhone.</p>';
-    banner = `<div class="banner"><p>Este navegador não recebe notificações. Use o Chrome no Android ou o Safari no iPhone.</p></div>`;
   } else if (Notification.permission === 'denied') {
     html = `<p>Notificações <b>bloqueadas</b>. Libere em ${isIOS ? 'Ajustes → Notificações → Tarefas' : 'informações do site (ícone ao lado do endereço) → Notificações'}.</p>`;
-    banner = `<div class="banner"><p>Notificações bloqueadas neste aparelho. Sem elas, lembretes e alarmes só aparecem com o app aberto.</p></div>`;
   } else if (Notification.permission === 'granted') {
     try {
       await subscribe();
@@ -977,14 +973,12 @@ async function refreshNotifications() {
     }
   } else {
     html = `<p class="muted">Ative para receber lembretes e alarmes com o app fechado.</p><button class="btn" id="enable-push">Ativar notificações</button>`;
-    banner = `<div class="banner"><p>Ative as notificações para receber lembretes e alarmes com o app fechado.</p><button class="btn" data-enable>Ativar</button></div>`;
   }
   $('#notif-status').innerHTML = html;
-  $('#banner').innerHTML = banner;
 }
 
 document.addEventListener('click', async (e) => {
-  if (e.target.closest('#enable-push, [data-enable]')) {
+  if (e.target.closest('#enable-push')) {
     Sound.unlock();
     try { if (await Notification.requestPermission() === 'granted') toast('Notificações ativadas'); } catch (err) { toast(err.message); }
     refreshNotifications();
