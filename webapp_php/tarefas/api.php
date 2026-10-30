@@ -74,6 +74,12 @@ try {
                 [$uid, time() - 62 * 86400])->fetchAll();
             out(['open' => array_map('task_json', $open), 'done' => array_map('task_json', $done), 'now' => time()]);
 
+        case 'done:GET':  // full history of completed tasks, newest first, in pages
+            $offset = max(0, (int)($_GET['offset'] ?? 0));
+            $rows = q("SELECT * FROM tasks WHERE user_id = ? AND status = 'done' ORDER BY done_at DESC LIMIT 101 OFFSET ?", [$uid, $offset])->fetchAll();
+            $total = (int)q("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'done'", [$uid])->fetchColumn();
+            out(['done' => array_map('task_json', array_slice($rows, 0, 100)), 'more' => count($rows) > 100, 'total' => $total]);
+
         case 'parse:POST':
             out(parse_text(trim((string)(input()['text'] ?? ''))));
 

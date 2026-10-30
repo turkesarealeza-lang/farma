@@ -34,6 +34,10 @@
           checklist: [{ t: 'Conferir estoque de cápsulas', done: false }, { t: 'Pedir orçamento', done: false }] }),
         T({ id: 7, title: 'Enviar relatório de mídia paga', due_at: now() - 3 * 3600, status: 'done', done_at: now() - 2 * 3600, notes: 'ROAS da semana e criativo vencedor.' }),
         T({ id: 8, title: 'Aprovar copy do anúncio de vitaminas', due_at: at(-1, 15), status: 'done', done_at: at(-1, 15, 20) }),
+        T({ id: 11, title: 'Renovar domínio do site', due_at: at(-6, 11), status: 'done', done_at: at(-6, 11, 40) }),
+        T({ id: 12, title: 'Conferir estoque de cápsulas', due_at: at(-6, 16), status: 'done', done_at: at(-6, 17), desc_type: 'checklist', checklist: [{ t: 'Vitamina C', done: true }, { t: 'Ômega 3', done: true }] }),
+        T({ id: 13, title: 'Reunião com contador', due_at: at(-15, 10), status: 'done', done_at: at(-15, 10, 30) }),
+        T({ id: 14, title: 'Subir campanha de Dia das Crianças', due_at: at(-20, 9), status: 'done', done_at: at(-20, 9, 45) }),
       ],
     };
   }
@@ -102,6 +106,10 @@
           open: db.tasks.filter((t) => t.status === 'scheduled' || t.status === 'nagging').sort((a, b) => a.due_at - b.due_at),
           done: db.tasks.filter((t) => t.status === 'done').sort((a, b) => b.done_at - a.done_at), now: now(),
         });
+      case 'done': {
+        const done = db.tasks.filter((t) => t.status === 'done').sort((a, b) => b.done_at - a.done_at);
+        return json({ done, more: false, total: done.length });
+      }
       case 'parse': {
         const p = fakeParse(body.text || '');
         return p.title ? json(p) : json({ error: 'Não entendi como tarefa. Ex: "ligar pro João amanhã às 14h".' }, 422);

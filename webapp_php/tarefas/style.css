@@ -646,3 +646,16 @@ input::placeholder, textarea::placeholder { text-transform: uppercase; }
 [data-skin="tech"] .alarm-body { border: 1px solid var(--line); border-radius: 8px; padding: 22px 16px 26px; }
 [data-skin="tech"] .d-when { font-size: 12.5px; flex-wrap: nowrap; align-items: flex-start; }
 [data-skin="tech"] .d-when svg { margin-top: 1px; }
+
+/* Header is just the mark and the barcode; nav is icon-only */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.barcode {
+  display: inline-block; height: 20px; width: 84px; flex: none; opacity: .85;
+  background: repeating-linear-gradient(90deg, var(--fg) 0 1px, transparent 1px 3px, var(--fg) 3px 5px, transparent 5px 6px, var(--fg) 6px 7px, transparent 7px 10px, var(--fg) 10px 12px, transparent 12px 13px);
+}
+.brand { flex: 1; gap: 12px; }
+.top-row .barcode { margin: 0; }
+[data-skin] .top-row .barcode { margin: 0; }
+.bottom-nav .seg button { padding: 11px 20px; }
+.bottom-nav .seg button svg { width: 1.35em; height: 1.35em; }
+[data-skin] .brand { flex: 1; }

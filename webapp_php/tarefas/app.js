@@ -5,7 +5,7 @@ const $ = (s) => document.querySelector(s);
 const state = {
   user: null, vapid: null, open: [], done: [], view: 'list', highlight: null,
   month: null, selDay: null, editId: null, detailId: null, confirmDelete: false,
-  stripDay: null, stripCentered: false,
+  stripDay: null, stripCentered: false, doneAll: [], doneMore: false, doneTotal: 0,
   mode: 'push', descType: 'text', items: [], recur: '', wdays: [], remind: 0, alarm: null, silenced: {},
 };
 
@@ -32,6 +32,7 @@ const ICONS = {
   volume: '<path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/>',
   moon: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
   checklist: '<path d="M10 6h11M10 12h11M10 18h11M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/>',
+  checkCircle: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9.5"/>',
   repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 01-3 3H3"/>',
   skip: '<path d="M5 4l10 8-10 8zM19 5v14"/>',
 };
@@ -197,6 +198,7 @@ async function loadTasks() {
     state.open = r.open;
     state.done = r.done;
     render();
+    if (state.view === 'done') loadDone();
     checkAlarms();
   } catch (err) {
     if (state.user) toast(err.message);
@@ -204,6 +206,7 @@ async function loadTasks() {
 }
 
 const allTasks = () => [...state.open, ...state.done];
+const findAny = (id) => findTask(id) || state.doneAll.find((t) => t.id === id);
 const findTask = (id) => allTasks().find((t) => t.id === id);
 
 function replaceTask(t) {
@@ -259,6 +262,8 @@ function renderHeader() {
   $('#strip').hidden = state.view !== 'list';
   $('#view-list').hidden = state.view !== 'list';
   $('#view-days').hidden = state.view !== 'days';
+  $('#view-done').hidden = state.view !== 'done';
+  $('#add-btn').hidden = state.view === 'done';
 }
 
 /** The day a task belongs to. A task done late shows as done on the day it was done. */
@@ -324,16 +329,17 @@ function renderStrip() {
   }
 }
 
-/** Open/closed state of each list section, remembered per device. "Done" starts closed. */
+/** Open/closed state of each list section, remembered per device. */
 function groupOpen(key) {
   try {
     const st = JSON.parse(pref.get('groups') || '{}');
-    return key in st ? st[key] : key !== 'done';
-  } catch { return key !== 'done'; }
+    return key in st ? st[key] : true;
+  } catch { return true; }
 }
 
+/** A foldable section; `key` = null makes it start open and not be remembered. */
 function groupBlock(key, cls, title, right, body) {
-  return `<details class="group ${cls}" data-g="${key}" ${groupOpen(key) ? 'open' : ''}>
+  return `<details class="group ${cls}" ${key ? `data-g="${key}"` : ''} ${!key || groupOpen(key) ? 'open' : ''}>
     <summary><h3><span class="g-title">${title}</span><span class="g-right">${right}<span class="chev" aria-hidden="true">${icon('right')}</span></span></h3></summary>
     ${body}</details>`;
 }
@@ -376,12 +382,37 @@ function renderList() {
     const count = open === list.length ? `[${pad2(list.length)}]` : `[${pad2(list.length - open)}/${pad2(list.length)}] feitas`;
     if (list.length) html += groupBlock(key, cls, `${key === 'late' ? '[!] ' : '// '}${name}`, count, `<div class="cards">${list.map(taskRow).join('')}</div>`);
   });
-  const recent = state.done.filter((t) => t.done_at > now - 7 * 86400);
-  if (recent.length) {
-    html += groupBlock('done', 'done-group', '// Concluídas · 7 dias', `[${String(recent.length).padStart(2, '0')}]`,
-      `<div class="cards">${recent.map(taskRow).join('')}</div>`);
-  }
   $('#view-list').innerHTML = html;
+}
+
+async function loadDone(more = false) {
+  try {
+    const r = await api(`done&offset=${more ? state.doneAll.length : 0}`);
+    state.doneAll = more ? [...state.doneAll, ...r.done] : r.done;
+    state.doneMore = r.more;
+    state.doneTotal = r.total;
+    if (state.view === 'done') renderDone();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+/** Every completed task, grouped by the day it was done. */
+function renderDone() {
+  const pad2 = (x) => String(x).padStart(2, '0');
+  const byDay = {};
+  state.doneAll.forEach((t) => { (byDay[taskDay(t)] ||= []).push(t); });
+  let html = `<div class="day-title"><div><h2>Concluídas</h2><p class="muted small">Todas as tarefas já feitas</p></div><span class="muted small">[${pad2(state.doneTotal)}]</span></div>`;
+  if (!state.doneAll.length) {
+    html += `<div class="empty"><p>Nenhuma tarefa concluída ainda.</p></div>`;
+  }
+  Object.keys(byDay).sort().reverse().forEach((k) => {
+    const rel = relDay(k);
+    html += groupBlock(null, '', `// ${rel ? rel + ' · ' : ''}${fmtLong(k)}`, `[${pad2(byDay[k].length)}]`,
+      `<div class="cards">${byDay[k].map(taskRow).join('')}</div>`);
+  });
+  if (state.doneMore) html += `<button class="btn ghost wide" data-more-done style="margin-top:16px">Carregar mais</button>`;
+  $('#view-done').innerHTML = html;
 }
 
 function renderDays() {
@@ -424,7 +455,7 @@ function renderDays() {
 
 function render() {
   renderHeader();
-  if (state.view === 'list') { renderStrip(); renderList(); } else renderDays();
+  if (state.view === 'list') { renderStrip(); renderList(); } else if (state.view === 'days') renderDays(); else renderDone();
   if (state.highlight) {
     document.querySelector(`.task[data-id="${state.highlight}"]`)?.scrollIntoView({ block: 'center' });
     setTimeout(() => { state.highlight = null; }, 2500);
@@ -440,6 +471,7 @@ $('#view-nav').addEventListener('click', (e) => {
   state.view = b.dataset.view;
   pref.set('view', state.view);
   render();
+  if (state.view === 'done') loadDone();
 });
 
 document.addEventListener('click', (e) => {
@@ -448,6 +480,7 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('[data-new]')) { openEditor(); return; }
   const nd = e.target.closest('[data-new-day]');
   if (nd) { openEditor(null, { day: nd.dataset.newDay }); return; }
+  if (e.target.closest('[data-more-done]')) { loadDone(true); return; }
   const sday = e.target.closest('[data-sday]');
   if (sday) { state.stripDay = sday.dataset.sday; renderStrip(); renderList(); return; }
   if (e.target.closest('[data-today]')) {
@@ -493,7 +526,7 @@ function openDetail(id) {
 }
 
 function renderDetail() {
-  const t = findTask(state.detailId);
+  const t = findAny(state.detailId);
   if (!t) { $('#detail').close(); return; }
   const done = t.status === 'done';
   const late = !done && t.due_at <= nowS();
@@ -562,7 +595,7 @@ $('#detail').addEventListener('change', async (e) => {
 $('#detail').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-d]');
   if (!b) return;
-  const t = findTask(state.detailId);
+  const t = findAny(state.detailId);
   const a = b.dataset.d;
   if (a === 'edit') { $('#detail').close(); openEditor(t); return; }
   if (a === 'delete' && !state.confirmDelete) { state.confirmDelete = true; renderDetail(); return; }
@@ -1115,7 +1148,7 @@ document.addEventListener('visibilitychange', () => {
 setInterval(() => { if (!document.hidden && state.user) loadTasks(); }, 30000);
 
 paintIcons();
-state.view = pref.get('view') === 'days' ? 'days' : 'list';
+state.view = ['days', 'done'].includes(pref.get('view')) ? pref.get('view') : 'list';
 
 (async function boot() {
   const t = Number(new URLSearchParams(location.search).get('t'));

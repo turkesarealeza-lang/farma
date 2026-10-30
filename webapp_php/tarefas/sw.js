@@ -1,7 +1,7 @@
 'use strict';
 // Service worker: shows push notifications, handles their buttons, and caches the app shell.
 
-const CACHE = 'tarefas-v12';
+const CACHE = 'tarefas-v13';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/badge-96.png'];
 
 self.addEventListener('install', (e) => {
