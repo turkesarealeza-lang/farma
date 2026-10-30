@@ -442,3 +442,81 @@ input::placeholder, textarea::placeholder { text-transform: uppercase; }
 .d-notes, .alarm-desc { font-weight: 300; }
 .top h1 { font-weight: 700; letter-spacing: -.02em; }
 .top h1 small, #today-sub, .fld, h3 { font-weight: 400; }
+
+/* Decorative barcode (shown by the Etiqueta skin) */
+.barcode { display: none; }
+
+/* ================= Etiqueta skin: black ink on grey label stock, Roboto ================= */
+:root[data-skin="label"] {
+  --bg: #dcdcdc;
+  --panel: #e3e3e3;
+  --card: #e3e3e3;
+  --card2: #d2d2d2;
+  --line: rgba(24, 24, 24, .42);
+  --fg: #161616;
+  --muted: #4d4d4d;
+  --dim: #8c8c8c;
+  --accent: #161616;
+  --accent-2: #161616;
+  --accent-soft: rgba(22, 22, 22, .06);
+  --on-accent: #e6e6e6;
+  --neg: #161616;
+  --pos: #161616;
+  --recur: #161616;
+  --recur-soft: rgba(22, 22, 22, .06);
+  --hatch: repeating-linear-gradient(-45deg, rgba(22, 22, 22, .1) 0 4px, transparent 4px 9px);
+  --f-display: "Roboto", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Roboto", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+[data-skin="label"] .barcode {
+  display: inline-block; height: 22px; width: 92px; flex: none; opacity: .9;
+  background: repeating-linear-gradient(90deg, var(--fg) 0 1px, transparent 1px 3px, var(--fg) 3px 6px, transparent 6px 7px, var(--fg) 7px 8px, transparent 8px 11px, var(--fg) 11px 13px, transparent 13px 14px);
+}
+[data-skin="label"] .d-id { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); }
+[data-skin="label"] .d-id .barcode { height: 16px; width: 120px; }
+[data-skin="label"] .brand-tag { background: var(--fg); color: var(--on-accent); border-color: var(--fg); border-radius: 2px; }
+[data-skin="label"] .brand { font-weight: 900; letter-spacing: 0; }
+[data-skin="label"] .top h1 { font: 900 44px/1 var(--f-display); letter-spacing: -.02em; }
+[data-skin="label"] .top h1 small { font-weight: 500; }
+[data-skin="label"] .t-time b { font: 700 21px/1 var(--f-display); letter-spacing: -.01em; }
+[data-skin="label"] .t-title { font-weight: 700; letter-spacing: 0; }
+[data-skin="label"] .t-desc, [data-skin="label"] .d-notes, [data-skin="label"] .alarm-desc { font-weight: 300; }
+[data-skin="label"] .d-title { font: 700 26px/1.15 var(--f-display); letter-spacing: -.01em; }
+[data-skin="label"] .sday b { font: 700 22px/1 var(--f-display); }
+[data-skin="label"] .alarm-time { font: 900 min(26vw, 124px)/1 var(--f-display); letter-spacing: -.04em; }
+[data-skin="label"] .cal-head h2, [data-skin="label"] .day-title h2, [data-skin="label"] .sheet-head h2, [data-skin="label"] .empty h2, [data-skin="label"] .login h1 { font-weight: 900; letter-spacing: -.01em; }
+
+/* Section titles as inverted label strips */
+[data-skin="label"] .group > h3, [data-skin="label"] details.done-group summary h3 {
+  background: var(--fg); color: var(--on-accent); padding: 5px 9px; border-radius: 2px; margin-bottom: 8px; font-weight: 500;
+}
+[data-skin="label"] .group > h3 > span, [data-skin="label"] .group h3 .back { color: var(--on-accent); }
+[data-skin="label"] .group.late > h3 { background: var(--fg); color: var(--on-accent); }
+
+/* Crisp label boxes */
+[data-skin="label"] .cards, [data-skin="label"] .cal, [data-skin="label"] .checks, [data-skin="label"] .d-notes { border-color: var(--fg); border-radius: 3px; }
+[data-skin="label"] .task { border-top-color: var(--line); }
+[data-skin="label"] .task:hover { background: var(--card2); }
+[data-skin="label"] .t-time { border-right: 1px solid var(--line); padding-right: 10px; }
+[data-skin="label"] .sday { border-radius: 6px; border-color: var(--fg); }
+[data-skin="label"] .sday.today { border-width: 2px; }
+[data-skin="label"] .add-big { border-color: var(--fg); border-radius: 4px; font-weight: 700; }
+[data-skin="label"] .btn { border-radius: 4px; font-weight: 700; }
+[data-skin="label"] .seg, [data-skin="label"] .quick button, [data-skin="label"] .pill, [data-skin="label"] .d-mode { border-radius: 3px; }
+[data-skin="label"] .seg button { border-radius: 2px; }
+[data-skin="label"] .wdays button { border-radius: 3px; }
+[data-skin="label"] .bottom-nav .seg { background: rgba(220, 220, 220, .92); border-color: var(--fg); box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+[data-skin="label"] dialog.sheet { border-color: var(--fg); }
+[data-skin="label"] dialog::backdrop { background: rgba(30, 30, 30, .45); }
+[data-skin="label"] input, [data-skin="label"] textarea { background: #ececec; border-color: var(--line); border-radius: 3px; }
+[data-skin="label"] input:focus, [data-skin="label"] textarea:focus { border-color: var(--fg); }
+[data-skin="label"] .icon.soft { background: #ececec; border: 1px solid var(--line); }
+[data-skin="label"] .alarm-screen { background: var(--hatch), var(--bg); }
+[data-skin="label"] .alarm-ring { border: 1px solid var(--fg); border-style: dashed; }
+[data-skin="label"] .task.late .t-time small { border-radius: 1px; }
+[data-skin="label"] .brand-mark { border-radius: 2px; filter: grayscale(1) brightness(.2); }
+[data-skin="label"] .mini .bar, [data-skin="label"] .progress .bar { height: 8px; }
+[data-skin="label"] .task { grid-template-columns: 78px minmax(0, 1fr) auto; }
+[data-skin="label"] .task.late .t-time small { font-size: 10px; letter-spacing: 0; }
+[data-skin="label"] .alarm-screen { background: var(--bg); }

@@ -507,7 +507,7 @@ function renderDetail() {
       </div>
       <button class="icon" data-close aria-label="Fechar">${icon('x')}</button>
     </div>
-    <p class="d-id">ID: T-${String(t.id).padStart(4, '0')}${t.recur ? ' // série' : ''}</p>
+    <p class="d-id">ID: T-${String(t.id).padStart(4, '0')}${t.recur ? ' // série' : ''}<span class="barcode" aria-hidden="true"></span></p>
     <h2 class="d-title">${esc(t.title)}</h2>
     <p class="d-when">${icon('clock')}${rel ? rel + ', ' : ''}${fmtLong(k)} · ${fmtTime(t.due_at)}
       ${done ? `<span class="ok">· concluída ${fmtShort(t.done_at)} ${fmtTime(t.done_at)}</span>` : late ? `<span class="late">· ${lateText(t.due_at)}</span>` : ''}</p>
@@ -992,6 +992,17 @@ document.addEventListener('click', async (e) => {
 });
 
 // ---------- settings ----------
+
+/** Visual skin: "micro" (lilac on black, mono) or "label" (black on grey, Roboto). */
+function applySkin(skin) {
+  document.documentElement.dataset.skin = skin;
+  pref.set('skin', skin);
+  document.querySelectorAll('#skin-picker [data-skin]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.skin === skin)));
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = skin === 'label' ? '#dcdcdc' : '#111015';
+}
+$('#skin-picker').addEventListener('click', (e) => { const b = e.target.closest('[data-skin]'); if (b) applySkin(b.dataset.skin); });
+applySkin(pref.get('skin') === 'label' ? 'label' : 'micro');
 
 $('#open-settings').addEventListener('click', () => {
   $('#me-line').textContent = `${state.user.name} · ${state.user.email}`;

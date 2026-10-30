@@ -14,8 +14,9 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700;900&display=swap">
   <link rel="stylesheet" href="style.css">
+  <script>try { document.documentElement.dataset.skin = localStorage.getItem('tarefas.skin') || 'micro'; } catch (e) {}</script>
   <title>Tarefas</title>
 </head>
 <body>
@@ -37,6 +38,7 @@
     <header class="top">
       <div class="top-row">
         <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Tarefas<span class="brand-tag">SYS // V.2</span></div>
+        <span class="barcode" aria-hidden="true"></span>
         <button class="chip-btn" id="wake-chip" hidden></button>
         <button class="icon" id="open-settings" aria-label="Configurações" data-icon="gear"></button>
       </div>
@@ -154,6 +156,13 @@
     <section>
       <h3>Notificações</h3>
       <div id="notif-status"></div>
+    </section>
+    <section>
+      <h3>Visual</h3>
+      <div class="seg small" id="skin-picker" role="group" aria-label="Visual do app">
+        <button type="button" data-skin="micro" aria-pressed="true">Micrográfico</button>
+        <button type="button" data-skin="label" aria-pressed="false">Etiqueta</button>
+      </div>
     </section>
     <section>
       <h3>Alarme</h3>
