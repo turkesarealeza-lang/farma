@@ -659,3 +659,65 @@ input::placeholder, textarea::placeholder { text-transform: uppercase; }
 .bottom-nav .seg button { padding: 11px 20px; }
 .bottom-nav .seg button svg { width: 1.35em; height: 1.35em; }
 [data-skin] .brand { flex: 1; }
+
+/* Day carousel: three whole days with today centred, a third of the neighbours peeking in at each edge */
+.strip { container-type: inline-size; scroll-snap-type: x mandatory; scroll-padding-inline: 0;
+  padding-left: 0; padding-right: 0; }
+.sday { width: calc(3 * (100cqw - 4 * 8px) / 11); height: 104px; scroll-snap-align: center; }
+.sday b { font-size: 26px; }
+
+/* ================= Técnico: retro-futurist CRT ================= */
+/* Faint grid; only the vertices are marked */
+:root[data-skin="tech"] {
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M16 13.5v5M13.5 16h5' stroke='%23ffffff' stroke-opacity='.13' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 32px 32px;
+}
+[data-skin="tech"] body { background: transparent; }
+
+/* Everything glows in its own colour */
+[data-skin="tech"] body { text-shadow: 0 0 6px color-mix(in srgb, currentColor 45%, transparent); }
+[data-skin="tech"] svg.i { filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 60%, transparent)); }
+[data-skin="tech"] .cards, [data-skin="tech"] .cal, [data-skin="tech"] .sday, [data-skin="tech"] .checks, [data-skin="tech"] .d-notes,
+[data-skin="tech"] .btn.ghost, [data-skin="tech"] input, [data-skin="tech"] textarea, [data-skin="tech"] dialog.sheet,
+[data-skin="tech"] .choice button, [data-skin="tech"] .quick button, [data-skin="tech"] .d-snooze button, [data-skin="tech"] .alarm-snooze button,
+[data-skin="tech"] .alarm-body, [data-skin="tech"] .pill, [data-skin="tech"] .d-mode {
+  box-shadow: 0 0 9px rgba(255, 255, 255, .07), inset 0 0 9px rgba(255, 255, 255, .03);
+}
+[data-skin="tech"] .group > summary > h3 { box-shadow: 0 6px 8px -8px rgba(255, 255, 255, .35); }
+[data-skin="tech"] .group.late > summary > h3 { box-shadow: 0 6px 8px -8px rgba(255, 90, 79, .6); }
+[data-skin="tech"] .add-big, [data-skin="tech"] .sday[aria-pressed="true"], [data-skin="tech"] .sday.today,
+[data-skin="tech"] .btn:not(.ghost), [data-skin="tech"] .seg button[aria-pressed="true"], [data-skin="tech"] .choice button[aria-pressed="true"],
+[data-skin="tech"] .quick.sel button[aria-pressed="true"], [data-skin="tech"] .wdays button[aria-pressed="true"], [data-skin="tech"] #toast {
+  box-shadow: 0 0 14px rgba(166, 230, 54, .35), inset 0 0 8px rgba(166, 230, 54, .12);
+}
+[data-skin="tech"] .bar span { filter: drop-shadow(0 0 4px rgba(166, 230, 54, .6)); }
+[data-skin="tech"] .task.late .t-time small { box-shadow: 0 0 10px rgba(255, 90, 79, .55); }
+[data-skin="tech"] .task.late { box-shadow: inset 0 0 18px rgba(255, 90, 79, .1); }
+[data-skin="tech"] .barcode { filter: drop-shadow(0 0 3px rgba(255, 255, 255, .45)); }
+[data-skin="tech"] .brand-mark { box-shadow: 0 0 8px rgba(255, 255, 255, .25); }
+[data-skin="tech"] .sdot, [data-skin="tech"] .dots i { filter: drop-shadow(0 0 2px currentColor); }
+
+/* Floating menu stands off the content: dark drop shadow plus a soft lime glow */
+[data-skin="tech"] .bottom-nav .seg {
+  border-color: rgba(166, 230, 54, .4);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .9), 0 0 0 1px rgba(0, 0, 0, .6), 0 0 26px rgba(166, 230, 54, .22), inset 0 0 12px rgba(166, 230, 54, .06);
+}
+
+/* CRT tube: rounded screen corners, darkened warped edges, scanlines. Taps pass straight through. */
+.crt { display: none; }
+[data-skin="tech"] .crt {
+  display: block; position: fixed; inset: 0; z-index: 100; pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, .2) 0 1px, transparent 1px 3px),
+    radial-gradient(130% 110% at 50% 50%, transparent 55%, rgba(0, 0, 0, .35) 80%, rgba(0, 0, 0, .8) 100%);
+}
+[data-skin="tech"] .crt::before {  /* the tube's bezel: curved corners and an inner glare at the edges */
+  content: ""; position: absolute; inset: 4px; border-radius: 34px / 28px;
+  box-shadow: 0 0 0 40px #020202, inset 0 0 70px rgba(0, 0, 0, .85), inset 0 0 14px rgba(166, 230, 54, .1);
+}
+[data-skin="tech"] .crt::after {  /* faint glass reflection */
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(80% 45% at 30% 8%, rgba(255, 255, 255, .045), transparent 70%);
+}
+@media (prefers-reduced-transparency: reduce) { [data-skin="tech"] .crt { background: none; } }

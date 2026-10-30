@@ -323,9 +323,14 @@ function renderStrip() {
       <i class="sdot ${dayDot(list, now)}"></i>${top}<b>${d}</b></button>`;
   }
   el.innerHTML = html;
-  if (!state.stripCentered && !el.hidden) {  // start with the selected day in view
+  if (!state.stripCentered && !el.hidden) {  // start with the selected day centred
     const btn = el.querySelector('[aria-pressed="true"]');
-    if (btn && el.clientWidth) { el.scrollLeft = btn.offsetLeft - 16 - btn.offsetWidth * 2; state.stripCentered = true; }
+    if (btn && el.clientWidth) {
+      const b = btn.getBoundingClientRect();
+      const s = el.getBoundingClientRect();
+      el.scrollLeft += b.left + b.width / 2 - (s.left + s.width / 2);
+      state.stripCentered = true;
+    }
   }
 }
 
